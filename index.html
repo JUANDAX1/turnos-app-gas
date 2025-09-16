@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style><?!= include('styles.html'); ?></style>
+</head>
+<body>
+
+  <div class="login-overlay" id="loading-screen">
+    <div class="login-card">
+      <h2>Sistema de Nómina</h2>
+      <p>Verificando acceso...</p>
+    </div>
+  </div>
+
+  <div class="app-container" id="app-container">
+    <nav class="sidebar">
+      <div class="sidebar-header">
+        <h1>Sistema de Nómina</h1>
+      </div>
+      <ul class="nav-menu">
+        <li class="nav-item" id="nav-dashboard"><a class="nav-link" onclick="showTab('dashboard', this)"><span class="nav-icon">📊</span>Dashboard</a></li>
+        <li class="nav-item" id="nav-asistencia"><a class="nav-link" onclick="showTab('asistencia', this)"><span class="nav-icon">✅</span>Registrar Asistencia</a></li>
+        <li class="nav-item" id="nav-colaboradores"><a class="nav-link" onclick="showTab('colaboradores', this)"><span class="nav-icon">🧑‍💼</span>Colaboradores</a></li>
+        <li class="nav-item" id="nav-nomina"><a class="nav-link" onclick="showTab('nomina', this)"><span class="nav-icon">💰</span>Calcular Nómina</a></li>
+        <li class="nav-item" id="nav-consultas"><a class="nav-link" onclick="showTab('consultas', this)"><span class="nav-icon">🔍</span>Consultar Asistencia</a></li>
+        <li class="nav-item" id="nav-configuracion"><a class="nav-link" onclick="showTab('configuracion', this)"><span class="nav-icon">⚙️</span>Configuración</a></li>
+      </ul>
+    </nav>
+
+    <div class="main-content">
+        <div id="dashboard" class="tab-content">
+        <div class="content-header"><h2>Dashboard General</h2></div>
+        <div class="content-body">
+          <div class="stats-grid">
+            <div class="stat-card"><div class="stat-value" id="stat-colaboradores">0</div><div class="stat-label">Colaboradores Activos</div></div>
+            <div class="stat-card"><div class="stat-value" id="stat-asistencia-hoy">0</div><div class="stat-label">Asistencias Hoy</div></div>
+            <div class="stat-card"><div class="stat-value" id="stat-ausencias-hoy">0</div><div class="stat-label">Ausencias Hoy</div></div>
+            <div class="stat-card"><div class="stat-value" id="stat-nomina-pendiente">0</div><div class="stat-label">Nóminas Pendientes</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="asistencia" class="tab-content">
+        <div class="content-header"><h2>Registro Diario de Asistencia</h2></div>
+        <div class="content-body">
+          
+          <div class="card">
+            <div class="card-header">Registrar Asistencia del Día: <span id="fecha-de-hoy"></span></div>
+            <div class="card-body">
+              <div class="table-container" id="asistencia-input-grid">
+                </div>
+              <div class="actions" style="margin-top: 20px;">
+                <button class="btn btn-success" onclick="guardarAsistencias()">Cargar Asistencias</button>
+              </div>
+              <div id="msgAsistenciaGrid"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">Registros Cargados Hoy</div>
+            <div class="card-body">
+              <div class="table-container" id="asistencia-results-table">
+                </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div id="colaboradores" class="tab-content">
+        <div class="content-header"><h2>Gestión de Colaboradores</h2></div>
+        <div class="content-body">
+          <div class="card">
+            <div class="card-header">Registrar Nuevo Colaborador</div>
+            <div class="card-body">
+              <form id="formColaborador" onsubmit="registrarColaborador(event)">
+                <div class="form-grid">
+                  <div class="form-group"><label for="idColaborador">ID / RUT / Cédula *</label><input id="idColaborador" type="text" required></div>
+                  <div class="form-group"><label for="nombreColaborador">Nombre Completo *</label><input id="nombreColaborador" type="text" required></div>
+                  <div class="form-group"><label for="cargoColaborador">Cargo</label><input id="cargoColaborador" type="text"></div>
+                  <div class="form-group"><label for="deptoColaborador">Departamento</label><input id="deptoColaborador" type="text"></div>
+                  <div class="form-group"><label for="fechaIngreso">Fecha de Ingreso *</label><input id="fechaIngreso" type="date" required></div>
+                  <div class="form-group"><label for="sueldoBase">Sueldo Base *</label><input id="sueldoBase" type="number" step="1000" required></div>
+                </div>
+                <div class="actions">
+                  <button type="submit" class="btn btn-success">Registrar Colaborador</button>
+                  <button type="button" class="btn btn-secondary" onclick="document.getElementById('formColaborador').reset(); setDefaultDates();">Limpiar</button>
+                </div>
+              </form>
+              <div id="msgColaborador"></div>
+            </div>
+          </div>
+          <div class="card">
+             <div class="card-header">Lista de Colaboradores</div>
+             <div class="card-body">
+                <div class="actions"><button class="btn" onclick="mostrarColaboradores()">Actualizar Lista</button></div>
+                <div id="loadingColaboradores" class="loading">Cargando...</div>
+                <div class="table-container" id="tablaColaboradores"></div>
+             </div>
+          </div>
+        </div>
+      </div>
+      
+      <div id="nomina" class="tab-content">
+        <div class="content-header"><h2>Cálculo de Pre-Nómina</h2></div>
+        <div class="content-body">
+          <div class="card">
+            <div class="card-header">Seleccionar Período de Cálculo</div>
+            <div class="card-body">
+              <form id="formNomina" onsubmit="solicitarCalculoNomina(event)" class="form-grid">
+                <div class="form-group">
+                  <label for="nomina-mes">Mes</label>
+                  <select id="nomina-mes" required>
+                    <option value="1">Enero</option>
+                    <option value="2">Febrero</option>
+                    <option value="3">Marzo</option>
+                    <option value="4">Abril</option>
+                    <option value="5">Mayo</option>
+                    <option value="6">Junio</option>
+                    <option value="7">Julio</option>
+                    <option value="8">Agosto</option>
+                    <option value="9">Septiembre</option>
+                    <option value="10">Octubre</option>
+                    <option value="11">Noviembre</option>
+                    <option value="12">Diciembre</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="nomina-anio">Año</label>
+                  <input type="number" id="nomina-anio" required min="2020" max="2040">
+                </div>
+                <div class="form-group" style="justify-content: flex-end;">
+                  <button type="submit" class="btn btn-primary" style="width: auto;">Calcular Nómina</button>
+                </div>
+              </form>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">Resultados del Cálculo</div>
+            <div class="card-body">
+              <div id="loadingNomina" class="loading">Calculando, por favor espera...</div>
+              <div class="table-container" id="resultadosNomina">
+                <div class="message">Selecciona un mes y año para ver los resultados.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+<div id="consultas" class="tab-content">
+        <div class="content-header"><h2>Consultar Historial de Asistencia</h2></div>
+        <div class="content-body">
+          <div class="card">
+            <div class="card-header">Filtros de Búsqueda</div>
+            <div class="card-body">
+              <form id="formConsulta" onsubmit="consultarAsistencias(event)" class="form-grid">
+                <div class="form-group">
+                  <label for="consulta-fecha-desde">Desde</label>
+                  <input type="date" id="consulta-fecha-desde" required>
+                </div>
+                <div class="form-group">
+                  <label for="consulta-fecha-hasta">Hasta</label>
+                  <input type="date" id="consulta-fecha-hasta" required>
+                </div>
+                <div class="form-group">
+                  <label for="consulta-colaborador">Colaborador</label>
+                  <select id="consulta-colaborador"></select>
+                </div>
+                <div class="form-group" style="justify-content: flex-end;">
+                  <button type="submit" class="btn btn-primary" style="width: auto;">Buscar</button>
+                </div>
+              </form>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">Resultados</div>
+            <div class="card-body">
+              <div id="loadingConsulta" class="loading">Buscando...</div>
+              <div class="table-container" id="resultados-consulta"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="login-overlay" id="modal-edicion" style="display: none;">
+        <div class="login-card" style="max-width: 500px;">
+          <h2>Editar Registro de Asistencia</h2>
+          <form id="form-edicion" onsubmit="guardarCambiosAsistencia(event)">
+            <input type="hidden" id="edit-idRegistro">
+            <div class="form-group">
+              <label for="edit-estado">Nuevo Estado</label>
+              <select id="edit-estado" required></select>
+            </div>
+            <div class="form-group">
+              <label for="edit-observaciones">Nuevas Observaciones</label>
+              <textarea id="edit-observaciones" rows="3"></textarea>
+            </div>
+            <div class="actions">
+              <button type="submit" class="btn btn-success">Guardar Cambios</button>
+              <button type="button" class="btn btn-secondary" onclick="cerrarModalEdicion()">Cancelar</button>
+            </div>
+          </form>
+          <div id="msgEdicion" style="margin-top: 15px;"></div>
+        </div>
+      </div>
+
+      <div id="configuracion" class="tab-content">
+        <div class="content-header"><h2>Configuración del Sistema</h2></div>
+        <div class="content-body">
+          <div class="card">
+            <div class="card-header">Herramientas</div>
+            <div class="card-body">
+              <div class="actions">
+                <button class="btn btn-success" onclick="inicializarSistema()">Inicializar / Validar Hojas</button>
+              </div>
+              <div id="msgConfig"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script><?!= include('javascript.html'); ?></script>
+</body>
+</html>
