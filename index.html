@@ -24,6 +24,7 @@
         <li class="nav-item" id="nav-colaboradores"><a class="nav-link" onclick="showTab('colaboradores', this)"><span class="nav-icon">🧑‍💼</span>Colaboradores</a></li>
         <li class="nav-item" id="nav-nomina"><a class="nav-link" onclick="showTab('nomina', this)"><span class="nav-icon">💰</span>Calcular Nómina</a></li>
         <li class="nav-item" id="nav-consultas"><a class="nav-link" onclick="showTab('consultas', this)"><span class="nav-icon">🔍</span>Consultar Asistencia</a></li>
+        <li class="nav-item" id="nav-proyectos"><a class="nav-link" onclick="showTab('proyectos', this)"><span class="nav-icon">🏗️</span>Registrar Proyectos</a></li>
         <li class="nav-item" id="nav-configuracion"><a class="nav-link" onclick="showTab('configuracion', this)"><span class="nav-icon">⚙️</span>Configuración</a></li>
       </ul>
     </nav>
@@ -46,7 +47,10 @@
         <div class="content-body">
           
           <div class="card">
-            <div class="card-header">Registrar Asistencia del Día: <span id="fecha-de-hoy"></span></div>
+            <div class="card-header">
+              Registrar Asistencia para el Día: 
+              <input type="date" id="fecha-asistencia" onchange="cargarVistaAsistencia()" style="margin-left: 10px; font-size: 1rem; padding: 5px; width: 180px;">
+            </div>
             <div class="card-body">
               <div class="table-container" id="asistencia-input-grid">
                 </div>
@@ -202,6 +206,70 @@
             </div>
           </form>
           <div id="msgEdicion" style="margin-top: 15px;"></div>
+        </div>
+      </div>
+
+      <div id="proyectos" class="tab-content">
+        <div class="content-header"><h2>Gestión de Proyectos</h2></div>
+        <div class="content-body">
+          <div class="card">
+            <div class="card-header">Registrar Nuevo Proyecto</div>
+            <div class="card-body">
+              <form id="formProyecto" onsubmit="registrarProyecto(event)">
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label for="project_code">Código del Proyecto *</label>
+                    <input id="project_code" type="text" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="project_name">Nombre del Proyecto *</label>
+                    <input id="project_name" type="text" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="registration_date">Fecha de Registro *</label>
+                    <input id="registration_date" type="date" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="project_address">Dirección</label>
+                    <input id="project_address" type="text">
+                  </div>
+                  <div class="form-group">
+                    <label for="project_georeference">Georeferencia</label>
+                    <input id="project_georeference" type="text">
+                  </div>
+                  <div class="form-group">
+                    <label for="project_contact">Contacto</label>
+                    <input id="project_contact" type="text">
+                  </div>
+                  <div class="form-group">
+                    <label for="project_observation">Observaciones</label>
+                    <textarea id="project_observation" rows="3"></textarea>
+                  </div>
+                </div>
+                <div class="actions">
+                  <button type="submit" class="btn btn-success">Registrar Proyecto</button>
+                  <button type="reset" class="btn btn-secondary">Limpiar</button>
+                </div>
+              </form>
+              <div id="msgProyecto"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Lista de Proyectos</span>
+                <div class="search-container">
+                  <input type="text" id="searchProyectos" placeholder="Buscar proyectos..." onkeyup="buscarProyectos(this.value)">
+                  <span class="search-icon">🔍</span>
+                </div>
+              </div>
+            </div>
+            <div class="card-body">
+              <div id="loadingProyectos" class="loading">Cargando...</div>
+              <div class="table-container" id="tablaProyectos"></div>
+            </div>
+          </div>
         </div>
       </div>
 

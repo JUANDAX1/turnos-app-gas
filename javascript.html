@@ -47,8 +47,9 @@ function setupUIForRole() {
 }
 
 function setDefaultDates() {
-  document.getElementById("fechaIngreso").valueAsDate = new Date();
   const today = new Date();
+  document.getElementById("fechaIngreso").valueAsDate = today;
+  document.getElementById("fecha-asistencia").valueAsDate = today;
   document.getElementById('nomina-mes').value = today.getMonth() + 1;
   document.getElementById('nomina-anio').value = today.getFullYear();
   document.getElementById('consulta-fecha-desde').valueAsDate = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -310,10 +311,10 @@ function inicializarSistema() {
 }
 
 function cargarVistaAsistencia() {
-  document.getElementById('fecha-de-hoy').textContent = new Date().toLocaleDateString('es-CL');
+  const fechaSeleccionada = document.getElementById('fecha-asistencia').value;
   google.script.run
     .withSuccessHandler(displayAsistenciaGrid)
-    .obtenerDatosParaAsistenciaGrid();
+    .obtenerDatosParaAsistenciaGrid(fechaSeleccionada);
 }
 
 function displayAsistenciaGrid(datos) {
@@ -325,8 +326,12 @@ function displayAsistenciaGrid(datos) {
   const inputGrid = document.getElementById('asistencia-input-grid');
   const resultsTable = document.getElementById('asistencia-results-table');
 
-  let inputHtml = `<table><thead><tr><th>Colaborador</th><th>Estado</th><th>Horas</th><th>Observaciones</th></tr></thead><tbody>`;
+  let inputHtml = `<table><thead><tr><th>Colaborador</th><th>Estado</th><th>Asignación</th><th>Vehículo</th><th>Horas</th><th>Observaciones</th></tr></thead><tbody>`;
   let resultsHtml = `<table><thead><tr><th>Colaborador</th><th>Estado Registrado</th><th>Acción</th></tr></thead><tbody>`;
+
+  const estadosOptions = datos.estados.map(e => `<option value="${e}">${e}</option>`).join('');
+  const asignacionesOptions = datos.asignaciones.map(a => `<option value="${a}">${a}</option>`).join('');
+  const vehiculosOptions = datos.vehiculos.map(v => `<option value="${v}">${v}</option>`).join('');
 
   const colaboradoresSinRegistro = [...datos.colaboradores];
 
@@ -351,7 +356,19 @@ function displayAsistenciaGrid(datos) {
         <td>
           <select class="asistencia-estado" data-employee-id="${col.id}">
             <option value="">Seleccionar...</option>
-            ${datos.estados.map(e => `<option value="${e}">${e}</option>`).join('')}
+            ${estadosOptions}
+          </select>
+        </td>
+        <td>
+          <select class="asistencia-asignacion">
+            <option value="">Seleccionar...</option>
+            ${asignacionesOptions}
+          </select>
+        </td>
+        <td>
+          <select class="asistencia-vehiculo">
+            <option value="">Seleccionar...</option>
+            ${vehiculosOptions}
           </select>
         </td>
         <td><input type="number" class="asistencia-horas" value="8" style="width: 80px;"></td>
@@ -371,6 +388,7 @@ function displayAsistenciaGrid(datos) {
 }
 
 function guardarAsistencias() {
+  const fechaSeleccionada = document.getElementById('fecha-asistencia').value;
   const selects = document.querySelectorAll('.asistencia-estado');
   const asistenciasParaGuardar = [];
 
@@ -380,6 +398,8 @@ function guardarAsistencias() {
       asistenciasParaGuardar.push({
         colaboradorId: select.dataset.employeeId,
         estado: select.value,
+        asignacion: row.querySelector('.asistencia-asignacion').value,
+        vehiculo: row.querySelector('.asistencia-vehiculo').value,
         horas: row.querySelector('.asistencia-horas').value,
         observaciones: row.querySelector('.asistencia-obs').value
       });
@@ -397,7 +417,7 @@ function guardarAsistencias() {
       showMessage('msgAsistenciaGrid', response, 'success');
       cargarVistaAsistencia();
     })
-    .registrarAsistenciasEnLote(asistenciasParaGuardar);
+    .registrarAsistenciasEnLote(asistenciasParaGuardar, fechaSeleccionada);
 }
 
 function solicitarEliminarRegistro(idRegistro, fechaRegistro) {
@@ -413,3 +433,179 @@ function solicitarEliminarRegistro(idRegistro, fechaRegistro) {
       .eliminarRegistroAsistencia(info);
   }
 }
+
+// ===============================================================
+// GESTIÓN DE PROYECTOS
+// ===============================================================
+
+function registrarProyecto(event) {
+  event.preventDefault();
+  const proyecto = {
+    project_code: document.getElementById('project_code').value,
+    project_name: document.getElementById('project_name').value,
+    registration_date: document.getElementById('registration_date').value,
+    project_address: document.getElementById('project_address').value,
+    project_georeference: document.getElementById('project_georeference').value,
+    project_contact: document.getElementById('project_contact').value,
+    project_observation: document.getElementById('project_observation').value
+  };
+
+  showMessage('msgProyecto', 'Registrando proyecto...', 'info');
+  google.script.run
+    .withSuccessHandler(response => {
+      showMessage('msgProyecto', response, response.includes('correctamente') ? 'success' : 'error');
+      if (response.includes('correctamente')) {
+        document.getElementById('formProyecto').reset();
+        document.getElementById('registration_date').valueAsDate = new Date();
+        cargarProyectos();
+      }
+    })
+    .withFailureHandler(error => showMessage('msgProyecto', `Error: ${error.message}`, 'error'))
+    .registrarProyecto(proyecto);
+}
+
+function cargarProyectos() {
+  const loading = document.getElementById('loadingProyectos');
+  const container = document.getElementById('tablaProyectos');
+  loading.style.display = 'block';
+  container.innerHTML = '';
+  
+  google.script.run
+    .withSuccessHandler(data => {
+      loading.style.display = 'none';
+      if (data.length === 0) {
+        container.innerHTML = '<div class="message">No hay proyectos registrados.</div>';
+        return;
+      }
+      let table = `
+        <table>
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Nombre</th>
+              <th>Fecha Registro</th>
+              <th>Dirección</th>
+              <th>Georeferencia</th>
+              <th>Contacto</th>
+              <th>Observaciones</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      data.forEach(proyecto => {
+        const obsEscapadas = proyecto.project_observation.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        table += `
+          <tr>
+            <td>${proyecto.project_code}</td>
+            <td>${proyecto.project_name}</td>
+            <td>${proyecto.registration_date}</td>
+            <td>${proyecto.project_address}</td>
+            <td>${proyecto.project_georeference}</td>
+            <td>${proyecto.project_contact}</td>
+            <td>${proyecto.project_observation}</td>
+            <td>
+              <button class="btn btn-secondary" onclick="editarProyecto('${proyecto.project_code}')">Editar</button>
+              <button class="btn btn-danger" onclick="eliminarProyecto('${proyecto.project_code}')">Eliminar</button>
+            </td>
+          </tr>
+        `;
+      });
+      table += '</tbody></table>';
+      container.innerHTML = table;
+    })
+    .withFailureHandler(error => {
+      loading.style.display = 'none';
+      showMessage('tablaProyectos', `Error: ${error.message}`, 'error');
+    })
+    .obtenerProyectos();
+}
+
+function editarProyecto(projectCode) {
+  const tableRow = document.querySelector(`tr:has(td:first-child:contains('${projectCode}'))`);
+  if (!tableRow) return;
+
+  const cells = tableRow.cells;
+  document.getElementById('project_code').value = cells[0].textContent;
+  document.getElementById('project_name').value = cells[1].textContent;
+  document.getElementById('registration_date').value = cells[2].textContent;
+  document.getElementById('project_address').value = cells[3].textContent;
+  document.getElementById('project_georeference').value = cells[4].textContent;
+  document.getElementById('project_contact').value = cells[5].textContent;
+  document.getElementById('project_observation').value = cells[6].textContent;
+
+  document.getElementById('project_code').readOnly = true;
+  document.querySelector('#formProyecto button[type="submit"]').textContent = 'Actualizar Proyecto';
+  document.querySelector('#formProyecto').onsubmit = function(e) {
+    e.preventDefault();
+    actualizarProyecto();
+  };
+}
+
+function actualizarProyecto() {
+  const proyecto = {
+    project_code: document.getElementById('project_code').value,
+    project_name: document.getElementById('project_name').value,
+    registration_date: document.getElementById('registration_date').value,
+    project_address: document.getElementById('project_address').value,
+    project_georeference: document.getElementById('project_georeference').value,
+    project_contact: document.getElementById('project_contact').value,
+    project_observation: document.getElementById('project_observation').value
+  };
+
+  showMessage('msgProyecto', 'Actualizando proyecto...', 'info');
+  google.script.run
+    .withSuccessHandler(response => {
+      showMessage('msgProyecto', response, response.includes('correctamente') ? 'success' : 'error');
+      if (response.includes('correctamente')) {
+        document.getElementById('formProyecto').reset();
+        document.getElementById('registration_date').valueAsDate = new Date();
+        document.getElementById('project_code').readOnly = false;
+        document.querySelector('#formProyecto button[type="submit"]').textContent = 'Registrar Proyecto';
+        document.querySelector('#formProyecto').onsubmit = function(e) {
+          e.preventDefault();
+          registrarProyecto(e);
+        };
+        cargarProyectos();
+      }
+    })
+    .withFailureHandler(error => showMessage('msgProyecto', `Error: ${error.message}`, 'error'))
+    .actualizarProyecto(proyecto);
+}
+
+function eliminarProyecto(projectCode) {
+  if (!confirm('¿Está seguro de que desea eliminar este proyecto? Esta acción no se puede deshacer.')) {
+    return;
+  }
+
+  showMessage('tablaProyectos', 'Eliminando proyecto...', 'info');
+  google.script.run
+    .withSuccessHandler(response => {
+      showMessage('tablaProyectos', response, response.includes('correctamente') ? 'success' : 'error');
+      if (response.includes('correctamente')) {
+        cargarProyectos();
+      }
+    })
+    .withFailureHandler(error => showMessage('tablaProyectos', `Error: ${error.message}`, 'error'))
+    .eliminarProyecto(projectCode);
+}
+
+function buscarProyectos(searchTerm) {
+  const rows = document.querySelectorAll('#tablaProyectos table tbody tr');
+  searchTerm = searchTerm.toLowerCase();
+  
+  rows.forEach(row => {
+    const text = Array.from(row.cells).map(cell => cell.textContent.toLowerCase()).join(' ');
+    row.style.display = text.includes(searchTerm) ? '' : 'none';
+  });
+}
+
+// Cargar proyectos cuando se muestra la pestaña
+document.addEventListener('DOMContentLoaded', function() {
+  const tabProyectos = document.getElementById('nav-proyectos');
+  if (tabProyectos) {
+    tabProyectos.querySelector('a').addEventListener('click', function() {
+      setTimeout(cargarProyectos, 100);
+    });
+  }
+});
