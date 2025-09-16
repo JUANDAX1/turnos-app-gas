@@ -32,6 +32,7 @@ const HOJA_COLABORADORES = "Colaboradores";
 const HOJA_ASISTENCIA = "RegistrosAsistencia";
 const HOJA_CONFIG = "Configuracion";
 const HOJA_USUARIOS = "Usuarios";
+const HOJA_PROYECTOS = "Project_list";
 
 const ROLES = {
   ADMIN: "ADMINISTRADOR",
@@ -530,6 +531,18 @@ function inicializarSistema() {
         sheetConfig.getRange("K2:K4").setValues([["Camioneta 1"], ["Camioneta 2"], ["No Aplica"]]);
         sheetConfig.autoResizeColumns(11, 1);
     }
+
+    // --- Hoja Project_list ---
+    let sheetProyectos = ss.getSheetByName(HOJA_PROYECTOS);
+    if (!sheetProyectos) {
+      sheetProyectos = ss.insertSheet(HOJA_PROYECTOS);
+      const headers = [["project_code", "project_name", "registration_date", "project_address", "project_georeference", "project_contact", "project_observation", "Timestamp"]];
+      sheetProyectos.getRange(1, 1, 1, 8).setValues(headers).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+      sheetProyectos.getRange("A:A").setNumberFormat("@");
+      sheetProyectos.getRange("C:C").setNumberFormat("dd/mm/yyyy");
+      sheetProyectos.getRange("H:H").setNumberFormat("dd/mm/yyyy hh:mm:ss");
+      sheetProyectos.autoResizeColumns(1, 8);
+    }
     
     return "Sistema inicializado correctamente. Todas las hojas han sido creadas y configuradas.";
   } catch (error) {
@@ -612,5 +625,143 @@ function actualizarRegistroAsistencia(datos) {
   } catch (e) {
     console.error("Error en actualizarRegistroAsistencia:", e);
     return `Error al actualizar: ${e.message}`;
+  }
+}
+
+// ===============================================================
+// GESTIÓN DE PROYECTOS
+// ===============================================================
+
+/**
+ * Registra un nuevo proyecto en la hoja de cálculo.
+ * @param {object} proyecto - Objeto con los datos del nuevo proyecto.
+ * @returns {string} Un mensaje de éxito o error.
+ */
+function registrarProyecto(proyecto) {
+  try {
+    if (!proyecto || !proyecto.project_code || !proyecto.project_name || !proyecto.registration_date) {
+      return "Error: Código, nombre y fecha son campos obligatorios.";
+    }
+
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_PROYECTOS);
+    const data = sheet.getDataRange().getValues();
+    
+    // Verificar si ya existe un proyecto con el mismo código
+    const codigoExistente = data.slice(1).some(row => row[0] === proyecto.project_code);
+    if (codigoExistente) {
+      return "Error: Ya existe un proyecto con ese código.";
+    }
+    
+    sheet.appendRow([
+      proyecto.project_code,
+      proyecto.project_name,
+      new Date(proyecto.registration_date),
+      proyecto.project_address || "",
+      proyecto.project_georeference || "",
+      proyecto.project_contact || "",
+      proyecto.project_observation || "",
+      new Date()
+    ]);
+    
+    return "Proyecto registrado correctamente.";
+  } catch (error) {
+    console.error("Error en registrarProyecto:", error);
+    return `Error al registrar: ${error.message}`;
+  }
+}
+
+/**
+ * Obtiene la lista completa de proyectos.
+ * @returns {Array<object>} Un arreglo de objetos, donde cada objeto es un proyecto.
+ */
+function obtenerProyectos() {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_PROYECTOS);
+    const data = sheet.getDataRange().getValues();
+    
+    if (data.length <= 1) {
+      return [];
+    }
+
+    const proyectos = data.slice(1).map(row => ({
+      project_code: row[0],
+      project_name: row[1],
+      registration_date: Utilities.formatDate(new Date(row[2]), Session.getScriptTimeZone(), "yyyy-MM-dd"),
+      project_address: row[3] || "",
+      project_georeference: row[4] || "",
+      project_contact: row[5] || "",
+      project_observation: row[6] || ""
+    }));
+    
+    return proyectos;
+  } catch (error) {
+    console.error("Error en obtenerProyectos:", error);
+    return [];
+  }
+}
+
+/**
+ * Actualiza un proyecto existente.
+ * @param {object} proyecto - Objeto con los datos del proyecto a actualizar.
+ * @returns {string} Un mensaje de éxito o error.
+ */
+function actualizarProyecto(proyecto) {
+  try {
+    if (!proyecto || !proyecto.project_code) {
+      return "Error: Se requiere el código del proyecto para actualizar.";
+    }
+
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_PROYECTOS);
+    const data = sheet.getDataRange().getValues();
+    
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === proyecto.project_code) {
+        sheet.getRange(i + 1, 2).setValue(proyecto.project_name);
+        sheet.getRange(i + 1, 3).setValue(new Date(proyecto.registration_date));
+        sheet.getRange(i + 1, 4).setValue(proyecto.project_address || "");
+        sheet.getRange(i + 1, 5).setValue(proyecto.project_georeference || "");
+        sheet.getRange(i + 1, 6).setValue(proyecto.project_contact || "");
+        sheet.getRange(i + 1, 7).setValue(proyecto.project_observation || "");
+        
+        return "Proyecto actualizado correctamente.";
+      }
+    }
+    
+    return "Error: No se encontró el proyecto para actualizar.";
+  } catch (error) {
+    console.error("Error en actualizarProyecto:", error);
+    return `Error al actualizar: ${error.message}`;
+  }
+}
+
+/**
+ * Elimina un proyecto existente.
+ * @param {string} projectCode - Código del proyecto a eliminar.
+ * @returns {string} Un mensaje de éxito o error.
+ */
+function eliminarProyecto(projectCode) {
+  try {
+    if (!projectCode) {
+      return "Error: Se requiere el código del proyecto para eliminar.";
+    }
+
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_PROYECTOS);
+    const data = sheet.getDataRange().getValues();
+    
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === projectCode) {
+        sheet.deleteRow(i + 1);
+        return "Proyecto eliminado correctamente.";
+      }
+    }
+    
+    return "Error: No se encontró el proyecto para eliminar.";
+  } catch (error) {
+    console.error("Error en eliminarProyecto:", error);
+    return `Error al eliminar: ${error.message}`;
   }
 }
