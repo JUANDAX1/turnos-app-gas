@@ -332,6 +332,7 @@ function displayAsistenciaGrid(datos) {
   const estadosOptions = datos.estados.map(e => `<option value="${e}">${e}</option>`).join('');
   const asignacionesOptions = datos.asignaciones.map(a => `<option value="${a}">${a}</option>`).join('');
   const vehiculosOptions = datos.vehiculos.map(v => `<option value="${v}">${v}</option>`).join('');
+  const proyectosOptions = datos.proyectos.map(p => `<option value="${p}">${p}</option>`).join('');
 
   const colaboradoresSinRegistro = [...datos.colaboradores];
 
@@ -360,9 +361,13 @@ function displayAsistenciaGrid(datos) {
           </select>
         </td>
         <td>
-          <select class="asistencia-asignacion">
+          <select class="asistencia-asignacion" onchange="toggleProyectoSelect(this)">
             <option value="">Seleccionar...</option>
             ${asignacionesOptions}
+          </select>
+          <select class="asistencia-proyecto" style="display: none; margin-top: 5px;">
+            <option value="">Seleccionar Proyecto...</option>
+            ${proyectosOptions}
           </select>
         </td>
         <td>
@@ -387,6 +392,12 @@ function displayAsistenciaGrid(datos) {
   resultsTable.innerHTML = resultsHtml;
 }
 
+function toggleProyectoSelect(selectElement) {
+  const row = selectElement.closest('tr');
+  const proyectoSelect = row.querySelector('.asistencia-proyecto');
+  proyectoSelect.style.display = selectElement.value === 'PROYECTO' ? 'block' : 'none';
+}
+
 function guardarAsistencias() {
   const fechaSeleccionada = document.getElementById('fecha-asistencia').value;
   const selects = document.querySelectorAll('.asistencia-estado');
@@ -395,10 +406,16 @@ function guardarAsistencias() {
   selects.forEach(select => {
     if (select.value) {
       const row = select.closest('tr');
+      const asignacionSelect = row.querySelector('.asistencia-asignacion');
+      const proyectoSelect = row.querySelector('.asistencia-proyecto');
+      let asignacion = asignacionSelect.value;
+      if (asignacion === 'PROYECTO' && proyectoSelect.value) {
+        asignacion = `PROYECTO: ${proyectoSelect.value}`;
+      }
       asistenciasParaGuardar.push({
         colaboradorId: select.dataset.employeeId,
         estado: select.value,
-        asignacion: row.querySelector('.asistencia-asignacion').value,
+        asignacion: asignacion,
         vehiculo: row.querySelector('.asistencia-vehiculo').value,
         horas: row.querySelector('.asistencia-horas').value,
         observaciones: row.querySelector('.asistencia-obs').value

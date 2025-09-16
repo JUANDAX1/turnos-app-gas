@@ -205,6 +205,7 @@ function obtenerDatosParaAsistenciaGrid(fechaSeleccionada) {
     const sheetColaboradores = ss.getSheetByName(HOJA_COLABORADORES);
     const sheetConfig = ss.getSheetByName(HOJA_CONFIG);
     const sheetAsistencia = ss.getSheetByName(HOJA_ASISTENCIA);
+    const sheetProyectos = ss.getSheetByName(HOJA_PROYECTOS);
 
     // 1. Obtener colaboradores activos
     const colaboradoresData = sheetColaboradores.getDataRange().getValues();
@@ -216,6 +217,9 @@ function obtenerDatosParaAsistenciaGrid(fechaSeleccionada) {
     const estados = sheetConfig.getRange("C2:C").getValues().flat().filter(String);
     const asignaciones = sheetConfig.getRange("G2:G").getValues().flat().filter(String);
     const vehiculos = sheetConfig.getRange("K2:K").getValues().flat().filter(String);
+
+    // Obtener lista de proyectos
+    const proyectos = sheetProyectos ? sheetProyectos.getRange("B2:B").getValues().flat().filter(String) : [];
 
     // 3. Obtener registros de la fecha seleccionada
     const fecha = fechaSeleccionada ? new Date(fechaSeleccionada.replace(/-/g, '\/') + ' 00:00:00') : new Date();
@@ -234,8 +238,9 @@ function obtenerDatosParaAsistenciaGrid(fechaSeleccionada) {
     return {
       colaboradores: colaboradoresActivos,
       estados: estados,
-      asignaciones: asignaciones,
+      asignaciones: ['PROYECTO', ...asignaciones],
       vehiculos: vehiculos,
+      proyectos: proyectos,
       registrosHoy: registrosDelDia
     };
   } catch (error) {
