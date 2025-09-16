@@ -464,6 +464,19 @@ function registrarProyecto(event) {
     .registrarProyecto(proyecto);
 }
 
+function cancelarEdicion() {
+  document.getElementById('formProyecto').reset();
+  document.getElementById('registration_date').valueAsDate = new Date();
+  document.getElementById('project_code').readOnly = false;
+  document.getElementById('btnSubmitProject').textContent = 'Registrar Proyecto';
+  document.getElementById('btnCancelEdit').style.display = 'none';
+  document.querySelector('#formProyecto').onsubmit = function(e) {
+    e.preventDefault();
+    registrarProyecto(e);
+  };
+  showMessage('msgProyecto', '', 'info');
+}
+
 function cargarProyectos() {
   const loading = document.getElementById('loadingProyectos');
   const container = document.getElementById('tablaProyectos');
@@ -505,8 +518,10 @@ function cargarProyectos() {
             <td>${proyecto.project_contact}</td>
             <td>${proyecto.project_observation}</td>
             <td>
-              <button class="btn btn-secondary" onclick="editarProyecto('${proyecto.project_code}')">Editar</button>
-              <button class="btn btn-danger" onclick="eliminarProyecto('${proyecto.project_code}')">Eliminar</button>
+              <div class="actions">
+                <button class="btn btn-secondary" onclick="editarProyecto('${proyecto.project_code}')">Editar</button>
+                <button class="btn btn-danger" onclick="eliminarProyecto('${proyecto.project_code}')">Eliminar</button>
+              </div>
             </td>
           </tr>
         `;
@@ -522,7 +537,8 @@ function cargarProyectos() {
 }
 
 function editarProyecto(projectCode) {
-  const tableRow = document.querySelector(`tr:has(td:first-child:contains('${projectCode}'))`);
+  const rows = document.querySelectorAll('#tablaProyectos table tbody tr');
+  const tableRow = Array.from(rows).find(row => row.cells[0].textContent === projectCode);
   if (!tableRow) return;
 
   const cells = tableRow.cells;
@@ -535,7 +551,8 @@ function editarProyecto(projectCode) {
   document.getElementById('project_observation').value = cells[6].textContent;
 
   document.getElementById('project_code').readOnly = true;
-  document.querySelector('#formProyecto button[type="submit"]').textContent = 'Actualizar Proyecto';
+  document.getElementById('btnSubmitProject').textContent = 'Actualizar Proyecto';
+  document.getElementById('btnCancelEdit').style.display = 'block';
   document.querySelector('#formProyecto').onsubmit = function(e) {
     e.preventDefault();
     actualizarProyecto();
