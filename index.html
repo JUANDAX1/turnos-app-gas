@@ -46,7 +46,10 @@
         <div class="content-body">
           
           <div class="card">
-            <div class="card-header">Registrar Asistencia del Día: <span id="fecha-de-hoy"></span></div>
+            <div class="card-header">
+              Registrar Asistencia para el Día: 
+              <input type="date" id="fecha-asistencia" onchange="cargarVistaAsistencia()" style="margin-left: 10px; font-size: 1rem; padding: 5px; width: 180px;">
+            </div>
             <div class="card-body">
               <div class="table-container" id="asistencia-input-grid">
                 </div>

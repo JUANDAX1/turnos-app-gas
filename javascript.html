@@ -47,8 +47,9 @@ function setupUIForRole() {
 }
 
 function setDefaultDates() {
-  document.getElementById("fechaIngreso").valueAsDate = new Date();
   const today = new Date();
+  document.getElementById("fechaIngreso").valueAsDate = today;
+  document.getElementById("fecha-asistencia").valueAsDate = today;
   document.getElementById('nomina-mes').value = today.getMonth() + 1;
   document.getElementById('nomina-anio').value = today.getFullYear();
   document.getElementById('consulta-fecha-desde').valueAsDate = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -310,10 +311,10 @@ function inicializarSistema() {
 }
 
 function cargarVistaAsistencia() {
-  document.getElementById('fecha-de-hoy').textContent = new Date().toLocaleDateString('es-CL');
+  const fechaSeleccionada = document.getElementById('fecha-asistencia').value;
   google.script.run
     .withSuccessHandler(displayAsistenciaGrid)
-    .obtenerDatosParaAsistenciaGrid();
+    .obtenerDatosParaAsistenciaGrid(fechaSeleccionada);
 }
 
 function displayAsistenciaGrid(datos) {
@@ -325,8 +326,12 @@ function displayAsistenciaGrid(datos) {
   const inputGrid = document.getElementById('asistencia-input-grid');
   const resultsTable = document.getElementById('asistencia-results-table');
 
-  let inputHtml = `<table><thead><tr><th>Colaborador</th><th>Estado</th><th>Horas</th><th>Observaciones</th></tr></thead><tbody>`;
+  let inputHtml = `<table><thead><tr><th>Colaborador</th><th>Estado</th><th>Asignación</th><th>Vehículo</th><th>Horas</th><th>Observaciones</th></tr></thead><tbody>`;
   let resultsHtml = `<table><thead><tr><th>Colaborador</th><th>Estado Registrado</th><th>Acción</th></tr></thead><tbody>`;
+
+  const estadosOptions = datos.estados.map(e => `<option value="${e}">${e}</option>`).join('');
+  const asignacionesOptions = datos.asignaciones.map(a => `<option value="${a}">${a}</option>`).join('');
+  const vehiculosOptions = datos.vehiculos.map(v => `<option value="${v}">${v}</option>`).join('');
 
   const colaboradoresSinRegistro = [...datos.colaboradores];
 
@@ -351,7 +356,19 @@ function displayAsistenciaGrid(datos) {
         <td>
           <select class="asistencia-estado" data-employee-id="${col.id}">
             <option value="">Seleccionar...</option>
-            ${datos.estados.map(e => `<option value="${e}">${e}</option>`).join('')}
+            ${estadosOptions}
+          </select>
+        </td>
+        <td>
+          <select class="asistencia-asignacion">
+            <option value="">Seleccionar...</option>
+            ${asignacionesOptions}
+          </select>
+        </td>
+        <td>
+          <select class="asistencia-vehiculo">
+            <option value="">Seleccionar...</option>
+            ${vehiculosOptions}
           </select>
         </td>
         <td><input type="number" class="asistencia-horas" value="8" style="width: 80px;"></td>
@@ -371,6 +388,7 @@ function displayAsistenciaGrid(datos) {
 }
 
 function guardarAsistencias() {
+  const fechaSeleccionada = document.getElementById('fecha-asistencia').value;
   const selects = document.querySelectorAll('.asistencia-estado');
   const asistenciasParaGuardar = [];
 
@@ -380,6 +398,8 @@ function guardarAsistencias() {
       asistenciasParaGuardar.push({
         colaboradorId: select.dataset.employeeId,
         estado: select.value,
+        asignacion: row.querySelector('.asistencia-asignacion').value,
+        vehiculo: row.querySelector('.asistencia-vehiculo').value,
         horas: row.querySelector('.asistencia-horas').value,
         observaciones: row.querySelector('.asistencia-obs').value
       });
@@ -397,7 +417,7 @@ function guardarAsistencias() {
       showMessage('msgAsistenciaGrid', response, 'success');
       cargarVistaAsistencia();
     })
-    .registrarAsistenciasEnLote(asistenciasParaGuardar);
+    .registrarAsistenciasEnLote(asistenciasParaGuardar, fechaSeleccionada);
 }
 
 function solicitarEliminarRegistro(idRegistro, fechaRegistro) {

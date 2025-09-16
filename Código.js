@@ -198,7 +198,7 @@ function obtenerListasParaAsistencia() {
  * Obtiene todos los datos necesarios para construir la parrilla de asistencia.
  * @returns {object} Un objeto con listas de colaboradores, estados y registros del día.
  */
-function obtenerDatosParaAsistenciaGrid() {
+function obtenerDatosParaAsistenciaGrid(fechaSeleccionada) {
   try {
     const ss = SpreadsheetApp.openById(getSpreadsheetId());
     const sheetColaboradores = ss.getSheetByName(HOJA_COLABORADORES);
@@ -211,17 +211,19 @@ function obtenerDatosParaAsistenciaGrid() {
       .filter(row => row[6] === 'Activo')
       .map(row => ({ id: row[0], nombre: row[1] }));
 
-    // 2. Obtener estados de asistencia
+    // 2. Obtener listas desde Configuración
     const estados = sheetConfig.getRange("C2:C").getValues().flat().filter(String);
+    const asignaciones = sheetConfig.getRange("G2:G").getValues().flat().filter(String);
+    const vehiculos = sheetConfig.getRange("K2:K").getValues().flat().filter(String);
 
-    // 3. Obtener registros de hoy
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0); // Estandarizar a medianoche
+    // 3. Obtener registros de la fecha seleccionada
+    const fecha = fechaSeleccionada ? new Date(fechaSeleccionada.replace(/-/g, '\/') + ' 00:00:00') : new Date();
+    fecha.setHours(0, 0, 0, 0); // Estandarizar a medianoche
     const asistenciaData = sheetAsistencia.getDataRange().getValues();
-    const registrosHoy = asistenciaData.slice(1).filter(row => {
+    const registrosDelDia = asistenciaData.slice(1).filter(row => {
       const fechaRegistro = new Date(row[2]);
       fechaRegistro.setHours(0, 0, 0, 0);
-      return fechaRegistro.getTime() === hoy.getTime();
+      return fechaRegistro.getTime() === fecha.getTime();
     }).map(row => ({
       idRegistro: row[0],
       colaboradorId: row[1],
@@ -231,7 +233,9 @@ function obtenerDatosParaAsistenciaGrid() {
     return {
       colaboradores: colaboradoresActivos,
       estados: estados,
-      registrosHoy: registrosHoy
+      asignaciones: asignaciones,
+      vehiculos: vehiculos,
+      registrosHoy: registrosDelDia
     };
   } catch (error) {
     console.error("Error en obtenerDatosParaAsistenciaGrid:", error);
@@ -327,17 +331,18 @@ function calcularNomina(mes, anio) {
  * @param {Array<object>} asistencias - Un arreglo de objetos de asistencia.
  * @returns {string} Un mensaje de resumen.
  */
-function registrarAsistenciasEnLote(asistencias) {
+function registrarAsistenciasEnLote(asistencias, fecha) {
   try {
     if (!asistencias || asistencias.length === 0) {
       return "No se enviaron datos para registrar.";
     }
+    const fechaRegistro = fecha ? new Date(fecha.replace(/-/g, '\/') + ' 00:00:00') : new Date();
 
     const ss = SpreadsheetApp.openById(getSpreadsheetId());
     const sheet = ss.getSheetByName(HOJA_ASISTENCIA);
     const registrosActuales = sheet.getDataRange().getValues();
     
-    const hoyTexto = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd/MM/yyyy");
+    const fechaTexto = Utilities.formatDate(fechaRegistro, Session.getScriptTimeZone(), "dd/MM/yyyy");
     let ultimoId = registrosActuales.length > 0 ? registrosActuales[registrosActuales.length - 1][0] : 0;
     
     const nuevasFilas = [];
@@ -347,7 +352,7 @@ function registrarAsistenciasEnLote(asistencias) {
       // Verificar duplicados para no registrar dos veces a la misma persona el mismo día
       const yaExiste = registrosActuales.slice(1).some(row => 
         row[1] == asistencia.colaboradorId && 
-        Utilities.formatDate(new Date(row[2]), Session.getScriptTimeZone(), "dd/MM/yyyy") === hoyTexto
+        Utilities.formatDate(new Date(row[2]), Session.getScriptTimeZone(), "dd/MM/yyyy") === fechaTexto
       );
 
       if (yaExiste) {
@@ -359,9 +364,11 @@ function registrarAsistenciasEnLote(asistencias) {
       nuevasFilas.push([
         ultimoId,
         asistencia.colaboradorId,
-        new Date(),
+        fechaRegistro,
         asistencia.estado,
-        asistencia.horas || 8, // Valor por defecto
+        asistencia.asignacion || "",
+        asistencia.vehiculo || "",
+        asistencia.horas || 8,
         asistencia.observaciones || "",
         new Date()
       ]);
@@ -464,7 +471,6 @@ function inicializarSistema() {
       sheetUsuarios = ss.insertSheet(HOJA_USUARIOS);
       const headers = [["Email", "Rol"]];
       sheetUsuarios.getRange(1, 1, 1, 2).setValues(headers).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
-      // Añade al usuario actual como administrador por defecto
       const currentUserEmail = Session.getActiveUser().getEmail();
       sheetUsuarios.appendRow([currentUserEmail, ROLES.ADMIN]);
       sheetUsuarios.autoResizeColumns(1, 2);
@@ -476,9 +482,9 @@ function inicializarSistema() {
       sheetColaboradores = ss.insertSheet(HOJA_COLABORADORES);
       const headers = [["ID_Colaborador", "NombreCompleto", "Cargo", "Departamento", "FechaIngreso", "SueldoBase", "Estado", "FechaCreacion"]];
       sheetColaboradores.getRange(1, 1, 1, 8).setValues(headers).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
-      sheetColaboradores.getRange("A:A").setNumberFormat("@"); // Formato de texto para IDs
+      sheetColaboradores.getRange("A:A").setNumberFormat("@");
       sheetColaboradores.getRange("E:E").setNumberFormat("dd/mm/yyyy");
-      sheetColaboradores.getRange("F:F").setNumberFormat("$#,##0"); // Formato de moneda
+      sheetColaboradores.getRange("F:F").setNumberFormat("$#,##0");
       sheetColaboradores.getRange("H:H").setNumberFormat("dd/mm/yyyy hh:mm");
       sheetColaboradores.autoResizeColumns(1, 8);
     }
@@ -487,14 +493,14 @@ function inicializarSistema() {
     let sheetAsistencia = ss.getSheetByName(HOJA_ASISTENCIA);
     if (!sheetAsistencia) {
       sheetAsistencia = ss.insertSheet(HOJA_ASISTENCIA);
-      const headers = [["ID_Registro", "ID_Colaborador", "Fecha", "EstadoAsistencia", "HorasTrabajadas", "Observaciones", "Timestamp"]];
-      sheetAsistencia.getRange(1, 1, 1, 7).setValues(headers).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+      const headers = [["ID_Registro", "ID_Colaborador", "Fecha", "EstadoAsistencia", "Asignacion", "Vehiculo", "HorasTrabajadas", "Observaciones", "Timestamp"]];
+      sheetAsistencia.getRange(1, 1, 1, 9).setValues(headers).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
       sheetAsistencia.getRange("A:A").setNumberFormat("0");
       sheetAsistencia.getRange("B:B").setNumberFormat("@");
       sheetAsistencia.getRange("C:C").setNumberFormat("dd/mm/yyyy");
-      sheetAsistencia.getRange("E:E").setNumberFormat("0.0#");
-      sheetAsistencia.getRange("G:G").setNumberFormat("dd/mm/yyyy hh:mm:ss");
-      sheetAsistencia.autoResizeColumns(1, 7);
+      sheetAsistencia.getRange("G:G").setNumberFormat("0.0#");
+      sheetAsistencia.getRange("I:I").setNumberFormat("dd/mm/yyyy hh:mm:ss");
+      sheetAsistencia.autoResizeColumns(1, 9);
     }
 
     // --- Hoja Configuracion ---
@@ -503,7 +509,6 @@ function inicializarSistema() {
       sheetConfig = ss.insertSheet(HOJA_CONFIG);
       const headers = [["Cargos", "Departamentos", "EstadosAsistencia"]];
       sheetConfig.getRange(1, 1, 1, 3).setValues(headers).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
-      // Datos de ejemplo
       sheetConfig.getRange("A2:C5").setValues([
         ["Operador", "Producción", "Trabajado"],
         ["Supervisor", "Calidad", "Falta Justificada"],
@@ -511,6 +516,19 @@ function inicializarSistema() {
         ["Gerente", "Gerencia", "Licencia Médica"]
       ]);
       sheetConfig.autoResizeColumns(1, 3);
+    }
+    
+    // Añadir nuevas listas a Configuracion si no existen
+    const configHeaders = sheetConfig.getRange(1, 1, 1, sheetConfig.getMaxColumns()).getValues()[0];
+    if (configHeaders.indexOf("Turno/Asignacion/Obra") === -1) {
+        sheetConfig.getRange(1, 7).setValue("Turno/Asignacion/Obra").setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+        sheetConfig.getRange("G2:G4").setValues([["Turno Mañana"], ["Turno Tarde"], ["Obra Principal"]]);
+        sheetConfig.autoResizeColumns(7, 1);
+    }
+    if (configHeaders.indexOf("Vehiculo_a_cargo") === -1) {
+        sheetConfig.getRange(1, 11).setValue("Vehiculo_a_cargo").setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+        sheetConfig.getRange("K2:K4").setValues([["Camioneta 1"], ["Camioneta 2"], ["No Aplica"]]);
+        sheetConfig.autoResizeColumns(11, 1);
     }
     
     return "Sistema inicializado correctamente. Todas las hojas han sido creadas y configuradas.";
@@ -538,8 +556,8 @@ function consultarAsistencias(filtros) {
     }, {});
 
     const asistenciaData = sheetAsistencia.getDataRange().getValues().slice(1);
-    const fechaDesde = new Date(filtros.fechaDesde + 'T00:00:00');
-    const fechaHasta = new Date(filtros.fechaHasta + 'T23:59:59');
+    const fechaDesde = new Date(filtros.fechaDesde.replace(/-/g, '\/') + ' 00:00:00');
+    const fechaHasta = new Date(filtros.fechaHasta.replace(/-/g, '\/') + ' 23:59:59');
 
     const resultados = asistenciaData.filter(fila => {
       const fechaRegistro = new Date(fila[2]);
