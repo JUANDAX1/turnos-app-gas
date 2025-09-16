@@ -32,6 +32,7 @@ function setupUIForRole() {
   const navConsultas = document.getElementById('nav-consultas');
   const navConfig = document.getElementById('nav-configuracion');
   const navDashboard = document.getElementById('nav-dashboard');
+  const navFondosCaja = document.getElementById('nav-fondoscaja');
 
   if (USER_ROLE === 'ASISTENTE') {
     navColaboradores.style.display = 'none';
@@ -64,6 +65,9 @@ function showTab(tabName, clickedLink) {
 
   if (tabName === 'asistencia') {
     cargarVistaAsistencia();
+  } else if (tabName === 'fondoscaja') {
+    cargarListasFondosCaja();
+    cargarResumenSaldos();
   }
 }
 
@@ -650,11 +654,133 @@ function buscarProyectos(searchTerm) {
 }
 
 // Cargar proyectos cuando se muestra la pestaña
+// ===============================================================
+// FUNCIONES PARA FONDOS DE CAJA
+// ===============================================================
+
+function cargarListasFondosCaja() {
+  // Cargar tipos de registro
+  google.script.run
+    .withSuccessHandler(function(tipos) {
+      const selectTipoRegistro = document.getElementById('tipo_registro_caja');
+      let tiposOptions = '<option value="">Seleccione un tipo...</option>';
+      tipos.forEach(tipo => {
+        tiposOptions += `<option value="${tipo}">${tipo}</option>`;
+      });
+      selectTipoRegistro.innerHTML = tiposOptions;
+    })
+    .withFailureHandler(function(error) {
+      showMessage('msgFondosCaja', `Error al cargar tipos de registro: ${error}`, 'error');
+    })
+    .obtenerTiposRegistro();
+
+  // Cargar colaboradores
+  google.script.run
+    .withSuccessHandler(function(colaboradores) {
+      const selectColaborador = document.getElementById('colaborador_caja');
+      let colaboradoresOptions = '<option value="">Seleccione un colaborador...</option>';
+      colaboradores.forEach(col => {
+        colaboradoresOptions += `<option value="${col.id}">${col.nombre}</option>`;
+      });
+      selectColaborador.innerHTML = colaboradoresOptions;
+    })
+    .withFailureHandler(function(error) {
+      showMessage('msgFondosCaja', `Error al cargar colaboradores: ${error}`, 'error');
+    })
+    .obtenerColaboradores();
+}
+
+function toggleMontoInputs() {
+  const tipoMovimiento = document.getElementById('tipo_movimiento').value;
+  const montoInput = document.getElementById('monto_caja');
+  montoInput.placeholder = tipoMovimiento === 'entrada' ? 'Ingrese el monto a recibir' : 'Ingrese el monto a entregar';
+}
+
+function registrarMovimientoCaja(event) {
+  event.preventDefault();
+  
+  const movimiento = {
+    idColaborador: document.getElementById('colaborador_caja').value,
+    tipoRegistro: document.getElementById('tipo_registro_caja').value,
+    tipoMovimiento: document.getElementById('tipo_movimiento').value,
+    monto: parseFloat(document.getElementById('monto_caja').value),
+    detalle: document.getElementById('detalle_caja').value
+  };
+
+  showMessage('msgFondosCaja', 'Registrando movimiento...', 'info');
+  
+  google.script.run
+    .withSuccessHandler(function(response) {
+      showMessage('msgFondosCaja', response, 'success');
+      document.getElementById('formFondosCaja').reset();
+      cargarResumenSaldos();
+    })
+    .withFailureHandler(function(error) {
+      showMessage('msgFondosCaja', `Error: ${error}`, 'error');
+    })
+    .registrarMovimientoCaja(movimiento);
+}
+
+function cargarResumenSaldos() {
+  const loading = document.getElementById('loadingSaldos');
+  const container = document.getElementById('tablaSaldos');
+  
+  loading.style.display = 'block';
+  
+  google.script.run
+    .withSuccessHandler(function(saldos) {
+      if (!saldos || saldos.length === 0) {
+        container.innerHTML = '<div class="message info">No hay saldos positivos para mostrar.</div>';
+      } else {
+        let html = `
+          <table>
+            <thead>
+              <tr>
+                <th>Colaborador</th>
+                <th>Tipo de Registro</th>
+                <th>Saldo ($)</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+        
+        saldos.forEach(item => {
+          html += `
+            <tr>
+              <td>${item.nombre}</td>
+              <td>${item.tipoRegistro}</td>
+              <td style="text-align: right">${formatearMoneda(item.saldo)}</td>
+            </tr>
+          `;
+        });
+        
+        html += '</tbody></table>';
+        container.innerHTML = html;
+      }
+      loading.style.display = 'none';
+    })
+    .withFailureHandler(function(error) {
+      showMessage('msgFondosCaja', `Error al cargar saldos: ${error}`, 'error');
+      loading.style.display = 'none';
+    })
+    .obtenerResumenSaldos();
+}
+
+// Evento de inicialización
 document.addEventListener('DOMContentLoaded', function() {
   const tabProyectos = document.getElementById('nav-proyectos');
   if (tabProyectos) {
     tabProyectos.querySelector('a').addEventListener('click', function() {
       setTimeout(cargarProyectos, 100);
+    });
+  }
+
+  // Agregar evento para cargar fondos de caja
+  const tabFondosCaja = document.getElementById('nav-fondoscaja');
+  if (tabFondosCaja) {
+    tabFondosCaja.querySelector('a').addEventListener('click', function() {
+      setTimeout(cargarListasFondosCaja, 100);
+      setTimeout(cargarResumenSaldos, 200);
     });
   }
 });

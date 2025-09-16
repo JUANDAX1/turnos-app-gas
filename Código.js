@@ -33,6 +33,7 @@ const HOJA_ASISTENCIA = "RegistrosAsistencia";
 const HOJA_CONFIG = "Configuracion";
 const HOJA_USUARIOS = "Usuarios";
 const HOJA_PROYECTOS = "Project_list";
+const HOJA_CONTABILIDAD = "contabilidad1";
 
 const ROLES = {
   ADMIN: "ADMINISTRADOR",
@@ -553,6 +554,34 @@ function inicializarSistema() {
       sheetProyectos.getRange("H:H").setNumberFormat("dd/mm/yyyy hh:mm:ss");
       sheetProyectos.autoResizeColumns(1, 8);
     }
+
+    // --- Hoja Contabilidad ---
+    let hojaContabilidad = ss.getSheetByName(HOJA_CONTABILIDAD);
+    if (!hojaContabilidad) {
+      hojaContabilidad = ss.insertSheet(HOJA_CONTABILIDAD);
+      const encabezadosContabilidad = [
+        ["ID_Colaborador", "NombreCompleto", "Tipo_registro", "ENTRADA_$", "SALIDA_$", "Detalle_transaccion", "Timestamp"]
+      ];
+      hojaContabilidad.getRange(1, 1, 1, encabezadosContabilidad[0].length)
+        .setValues(encabezadosContabilidad)
+        .setBackground("#2E86AB")
+        .setFontColor("white")
+        .setFontWeight("bold");
+      
+      // Configurar formatos de columnas
+      hojaContabilidad.getRange("A:A").setNumberFormat("@"); // ID como texto
+      hojaContabilidad.getRange("D:E").setNumberFormat("#,##0"); // Montos con formato de número
+      hojaContabilidad.getRange("G:G").setNumberFormat("dd/mm/yyyy hh:mm:ss"); // Timestamp
+      hojaContabilidad.autoResizeColumns(1, 7);
+      
+      // Configurar validación de datos para Tipo_registro
+      const rangoTiposRegistro = ss.getSheetByName(HOJA_CONFIG).getRange("N2:N");
+      const regla = SpreadsheetApp.newDataValidation()
+        .requireValueInRange(rangoTiposRegistro)
+        .setAllowInvalid(false)
+        .build();
+      hojaContabilidad.getRange("C2:C").setDataValidation(regla);
+    }
     
     return "Sistema inicializado correctamente. Todas las hojas han sido creadas y configuradas.";
   } catch (error) {
@@ -775,5 +804,133 @@ function eliminarProyecto(projectCode) {
   } catch (error) {
     console.error("Error en eliminarProyecto:", error);
     return `Error al eliminar: ${error.message}`;
+  }
+}
+
+// ===============================================================
+// GESTIÓN DE FONDOS DE CAJA
+// ===============================================================
+
+/**
+ * Obtiene los tipos de registro desde la hoja de configuración.
+ * @returns {Array<string>} Lista de tipos de registro.
+ */
+function obtenerTiposRegistro() {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheetConfig = ss.getSheetByName(HOJA_CONFIG);
+    const tiposRegistro = sheetConfig.getRange("N2:N")
+      .getValues()
+      .flat()
+      .filter(tipo => tipo !== "");
+    return tiposRegistro;
+  } catch (error) {
+    console.error("Error en obtenerTiposRegistro:", error);
+    return [];
+  }
+}
+
+/**
+ * Registra un movimiento en la hoja de contabilidad.
+ * @param {object} movimiento - Objeto con los datos del movimiento.
+ * @returns {string} Mensaje de éxito o error.
+ */
+function registrarMovimientoCaja(movimiento) {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_CONTABILIDAD);
+    
+    // Obtener datos del colaborador
+    const sheetColaboradores = ss.getSheetByName(HOJA_COLABORADORES);
+    const colaboradoresData = sheetColaboradores.getRange("A:B").getValues();
+    const colaborador = colaboradoresData.find(row => row[0].toString() === movimiento.idColaborador.toString());
+    
+    if (!colaborador) {
+      return "Error: Colaborador no encontrado.";
+    }
+    
+    const entrada = movimiento.tipoMovimiento === "entrada" ? movimiento.monto : 0;
+    const salida = movimiento.tipoMovimiento === "salida" ? movimiento.monto : 0;
+    
+    sheet.appendRow([
+      movimiento.idColaborador,
+      colaborador[1], // Nombre completo
+      movimiento.tipoRegistro,
+      entrada,
+      salida,
+      movimiento.detalle,
+      new Date()
+    ]);
+    
+    return "Movimiento registrado correctamente.";
+  } catch (error) {
+    console.error("Error en registrarMovimientoCaja:", error);
+    return `Error al registrar el movimiento: ${error.message}`;
+  }
+}
+
+/**
+ * Obtiene el resumen de saldos por colaborador.
+ * @returns {Array<object>} Arreglo con los saldos por colaborador.
+ */
+function obtenerResumenSaldos() {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_CONTABILIDAD);
+    const data = sheet.getDataRange().getValues();
+    
+    if (data.length <= 1) {
+      return [];
+    }
+    
+    const saldos = {};
+    
+    // Procesar cada registro
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      const id = row[0].toString();
+      const nombre = row[1];
+      const tipoRegistro = row[2];
+      const entrada = row[3] || 0;
+      const salida = row[4] || 0;
+      
+      if (!saldos[id]) {
+        saldos[id] = {
+          nombre: nombre,
+          tipos: {}
+        };
+      }
+      
+      if (!saldos[id].tipos[tipoRegistro]) {
+        saldos[id].tipos[tipoRegistro] = {
+          entradas: 0,
+          salidas: 0
+        };
+      }
+      
+      saldos[id].tipos[tipoRegistro].entradas += entrada;
+      saldos[id].tipos[tipoRegistro].salidas += salida;
+    }
+    
+    // Convertir a array y filtrar solo saldos positivos
+    const resultado = [];
+    for (const [id, info] of Object.entries(saldos)) {
+      for (const [tipo, montos] of Object.entries(info.tipos)) {
+        const saldo = montos.salidas - montos.entradas;
+        if (saldo > 0) {
+          resultado.push({
+            id: id,
+            nombre: info.nombre,
+            tipoRegistro: tipo,
+            saldo: saldo
+          });
+        }
+      }
+    }
+    
+    return resultado;
+  } catch (error) {
+    console.error("Error en obtenerResumenSaldos:", error);
+    return [];
   }
 }
