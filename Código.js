@@ -183,15 +183,20 @@ function obtenerListasParaAsistencia() {
 
     // Obtener estados de asistencia desde la configuración
     const estadosData = sheetConfig.getRange("C2:C").getValues();
-    const estados = estadosData.flat().filter(String); // .flat() convierte array de arrays en uno solo y filter(String) elimina vacíos
+    const estados = estadosData.flat().filter(String);
+
+    // Obtener asignaciones desde la configuración
+    const asignacionesData = sheetConfig.getRange("G2:G").getValues();
+    const asignaciones = asignacionesData.flat().filter(String);
 
     return {
       colaboradores: colaboradoresActivos,
-      estados: estados
+      estados: estados,
+      asignaciones: ['PROYECTO', ...asignaciones]
     };
   } catch (error) {
     console.error("Error en obtenerListasParaAsistencia:", error);
-    return { colaboradores: [], estados: [] };
+    return { colaboradores: [], estados: [], asignaciones: [] };
   }
 }
 
@@ -591,7 +596,8 @@ function consultarAsistencias(filtros) {
       nombreColaborador: mapaColaboradores[fila[1]] || 'Desconocido',
       fecha: Utilities.formatDate(new Date(fila[2]), Session.getScriptTimeZone(), 'dd/MM/yyyy'),
       estado: fila[3],
-      observaciones: fila[5] || ''
+      asignacion: fila[4] || '',
+      observaciones: fila[7] || ''
     }));
 
     return resultados.sort((a, b) => new Date(b.fecha.split('/').reverse().join('-')) - new Date(a.fecha.split('/').reverse().join('-')));
@@ -620,9 +626,10 @@ function actualizarRegistroAsistencia(datos) {
 
     for (let i = 1; i < data.length; i++) {
       if (data[i][0] == datos.idRegistro) {
-        // Columna 4 es 'EstadoAsistencia' (índice 3), Columna 6 es 'Observaciones' (índice 5)
+        // Columna D (4) es 'EstadoAsistencia', Columna E (5) es 'Asignacion', Columna H (8) es 'Observaciones'
         sheet.getRange(i + 1, 4).setValue(datos.nuevoEstado);
-        sheet.getRange(i + 1, 6).setValue(datos.nuevasObservaciones);
+        sheet.getRange(i + 1, 5).setValue(datos.nuevaAsignacion);
+        sheet.getRange(i + 1, 8).setValue(datos.nuevasObservaciones);
         return "Registro actualizado correctamente.";
       }
     }

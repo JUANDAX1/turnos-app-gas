@@ -87,6 +87,7 @@ function cargarListasDesplegables() {
 function populateDropdowns(listas) {
   const selectColaboradorConsulta = document.getElementById('consulta-colaborador');
   const selectEstadoEdicion = document.getElementById('edit-estado');
+  const selectAsignacionEdicion = document.getElementById('edit-asignacion');
 
   let colaboradoresOptions = '<option value="TODOS">Todos los colaboradores</option>';
   listas.colaboradores.forEach(col => {
@@ -99,6 +100,16 @@ function populateDropdowns(listas) {
     estadosOptions += `<option value="${estado}">${estado}</option>`;
   });
   selectEstadoEdicion.innerHTML = estadosOptions;
+
+  let asignacionesOptions = '<option value="">Seleccione una asignación...</option>';
+  if (listas.asignaciones) {
+    listas.asignaciones.forEach(asignacion => {
+      asignacionesOptions += `<option value="${asignacion}">${asignacion}</option>`;
+    });
+  }
+  if(selectAsignacionEdicion) {
+    selectAsignacionEdicion.innerHTML = asignacionesOptions;
+  }
 }
 
 function registrarColaborador(event) {
@@ -244,17 +255,19 @@ function consultarAsistencias(event) {
             return;
         }
 
-        let table = `<table><thead><tr><th>Fecha</th><th>Nombre</th><th>Estado</th><th>Observaciones</th><th>Acción</th></tr></thead><tbody>`;
+        let table = `<table><thead><tr><th>Fecha</th><th>Nombre</th><th>Estado</th><th>Asignación</th><th>Observaciones</th><th>Acción</th></tr></thead><tbody>`;
         resultados.forEach(res => {
-            const obsEscapadas = res.observaciones.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            const obsEscapadas = (res.observaciones || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            const asignacionEscapada = (res.asignacion || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
             table += `
               <tr>
                 <td>${res.fecha}</td>
                 <td>${res.nombreColaborador}</td>
                 <td>${res.estado}</td>
+                <td>${res.asignacion || ''}</td>
                 <td>${res.observaciones}</td>
                 <td>
-                  <button class="btn btn-secondary" onclick="abrirModalEdicion(${res.idRegistro}, '${res.estado}', '${obsEscapadas}')">
+                  <button class="btn btn-secondary" onclick="abrirModalEdicion(${res.idRegistro}, '${res.estado}', '${asignacionEscapada}', '${obsEscapadas}')">
                     Editar
                   </button>
                 </td>
@@ -267,9 +280,10 @@ function consultarAsistencias(event) {
     .consultarAsistencias(filtros);
 }
 
-function abrirModalEdicion(idRegistro, estadoActual, obsActual) {
+function abrirModalEdicion(idRegistro, estadoActual, asignacionActual, obsActual) {
   document.getElementById('edit-idRegistro').value = idRegistro;
   document.getElementById('edit-estado').value = estadoActual;
+  document.getElementById('edit-asignacion').value = asignacionActual;
   document.getElementById('edit-observaciones').value = obsActual;
   document.getElementById('modal-edicion').style.display = 'flex';
 }
@@ -284,6 +298,7 @@ function guardarCambiosAsistencia(event) {
   const datos = {
     idRegistro: document.getElementById('edit-idRegistro').value,
     nuevoEstado: document.getElementById('edit-estado').value,
+    nuevaAsignacion: document.getElementById('edit-asignacion').value,
     nuevasObservaciones: document.getElementById('edit-observaciones').value
   };
 
