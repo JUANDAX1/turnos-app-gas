@@ -35,7 +35,6 @@ const HOJA_USUARIOS = "Usuarios";
 const HOJA_PROYECTOS = "Project_list";
 const HOJA_CONTABILIDAD = "contabilidad1";
   const HOJA_BONIFICACIONES = "Bonificaciones";
-const HOJA_PONDERACION = "ponderacion";
 
 const ROLES = {
   ADMIN: "ADMINISTRADOR",
@@ -661,193 +660,154 @@ function consultarAsistencias(filtros) {
 }
 
 /**
- * Lee y devuelve los datos de la tabla dinámica desde la hoja Bonificaciones, comenzando en A2.
+ * Calcula la matriz de bonificaciones (conteo de días asignados por proyecto x colaborador)
+ * @param {string} fechaDesde - 'yyyy-mm-dd'
+ * @param {string} fechaHasta - 'yyyy-mm-dd'
  * @param {string} filtroBusqueda - texto opcional para filtrar colaboradores (id o nombre parcial)
- * @returns {object} { headers: [...], data: [...[]], totales: [...] } - Estructura de la tabla dinámica
+ * @returns {object} { proyectos: [...], colaboradores: [...], matriz: { proyecto: { colaboradorId: count } } }
  */
-function obtenerBonificaciones(filtroBusqueda) {
+function obtenerBonificaciones(fechaDesde, fechaHasta, filtroBusqueda) {
   try {
     const ss = SpreadsheetApp.openById(getSpreadsheetId());
-    const sheetBonificaciones = ss.getSheetByName(HOJA_BONIFICACIONES);
-    
-    if (!sheetBonificaciones) {
-      throw new Error('No se encontró la hoja de Bonificaciones');
-    }
+    const sheetAsistencia = ss.getSheetByName(HOJA_ASISTENCIA);
+    const sheetColaboradores = ss.getSheetByName(HOJA_COLABORADORES);
 
-    // Encontrar el último dato en la hoja
-    const lastRow = sheetBonificaciones.getLastRow();
-    const lastCol = sheetBonificaciones.getLastColumn();
-    
-    if (lastRow < 2) { // Si no hay datos después de A2
-      return {
-        headers: [],
-        data: [],
-        totales: []
-      };
-    }
+    const colaboradoresData = sheetColaboradores.getDataRange().getValues().slice(1);
+    const asistenciaData = sheetAsistencia.getDataRange().getValues().slice(1);
 
-    // Leer el rango de la tabla dinámica desde A2
-    const tableDynamicRange = sheetBonificaciones.getRange(2, 1, lastRow - 1, lastCol);
-    const data = tableDynamicRange.getValues();
-    
-    if (data.length === 0) {
-      return {
-        headers: [],
-        data: [],
-        totales: []
-      };
-    }
-
-    // Procesar los encabezados (primera fila de la tabla dinámica, que está en A2)
-    const headers = data[0].map(header => header.toString().trim());
-
-    // Obtener los datos excluyendo la fila de encabezado y la última fila de totales
-    const tableData = data.slice(1, -1);
-    
-    // Obtener la fila de totales (última fila)
-    const totales = data[data.length - 1];
-
-    // Si hay filtro de búsqueda, aplicarlo a las filas
-    let filteredData = tableData;
-    if (filtroBusqueda) {
-      const filtroLower = filtroBusqueda.toLowerCase();
-      filteredData = tableData.filter(row => {
-        // Buscar en todas las columnas
-        return row.some(cell => 
-          cell !== null && cell.toString().toLowerCase().includes(filtroLower)
-        );
-      });
-    }
-
-    // Formatear los números en los datos y totales
-    filteredData = filteredData.map(row => 
-      row.map(cell => {
-        if (cell === null || cell === '') return '';
-        return typeof cell === 'number' ? Number(cell.toFixed(2)) : cell;
-      })
-    );
-
-    const totalesFormateados = totales.map(cell => {
-      if (cell === null || cell === '') return '';
-      return typeof cell === 'number' ? Number(cell.toFixed(2)) : cell;
+    // Crear mapa ID -> Nombre (trimmed)
+    const mapaColaboradores = {};
+    colaboradoresData.forEach(r => {
+      const id = (r[0] != null) ? r[0].toString().trim() : '';
+      const nombre = (r[1] != null) ? r[1].toString().trim() : '';
+      if (id) mapaColaboradores[id] = nombre;
     });
 
-    return {
-      headers: headers,
-      data: filteredData,
-      totales: totalesFormateados,
-      rawData: data // Incluir datos crudos para depuración
-    };
+    const q = (filtroBusqueda || '').toString().trim().toLowerCase();
+
+    const desde = fechaDesde ? new Date(fechaDesde.replace(/-/g, '/')) : new Date('1970-01-01');
+    const hasta = fechaHasta ? new Date(fechaHasta.replace(/-/g, '/')) : new Date();
+    hasta.setHours(23,59,59,999);
+
+    const matriz = {};
+    const colaboradoresSet = {};
+
+    asistenciaData.forEach(row => {
+      try {
+        const rawId = row[1] != null ? row[1].toString().trim() : '';
+        if (!rawId) return;
+        // Aplicar filtro de colaborador si existe
+        if (q) {
+          const full = (rawId + ' ' + (mapaColaboradores[rawId] || '')).toLowerCase();
+          if (full.indexOf(q) === -1) return;
+        }
+
+        const fechaRegistro = row[2] ? new Date(row[2]) : null;
+        if (!fechaRegistro) return;
+        const fr = new Date(fechaRegistro.getFullYear(), fechaRegistro.getMonth(), fechaRegistro.getDate());
+        if (fr < new Date(desde.getFullYear(), desde.getMonth(), desde.getDate()) || fr > new Date(hasta.getFullYear(), hasta.getMonth(), hasta.getDate())) return;
+
+        const asignacion = row[4] != null ? row[4].toString().trim() : '';
+        if (!asignacion) return;
+
+        // Extraer nombre del proyecto: si contiene 'PROYECTO' intentar obtener la parte posterior, si no usar la asignacion tal cual
+        let proyectoNombre = '';
+        const up = asignacion.toUpperCase();
+        if (up.indexOf('PROYECTO') !== -1) {
+          // Buscar ':' y tomar lo que viene después, si no, quitar la palabra PROYECTO y posibles separadores
+          const idx = asignacion.indexOf(':');
+          if (idx !== -1) proyectoNombre = asignacion.substring(idx + 1).trim();
+          else proyectoNombre = asignacion.replace(/PROYECTO\s*-?\s*/i, '').trim();
+        } else {
+          proyectoNombre = asignacion;
+        }
+
+        if (!proyectoNombre) return;
+
+        // Normalizar claves
+        const projKey = proyectoNombre;
+        const colId = rawId;
+
+        if (!matriz[projKey]) matriz[projKey] = {};
+        matriz[projKey][colId] = (matriz[projKey][colId] || 0) + 1;
+        colaboradoresSet[colId] = true;
+      } catch (inner) {
+        // ignorar fila problemática
+      }
+    });
+
+    // Construir listas ordenadas
+    const proyectos = Object.keys(matriz).sort();
+    const colaboradores = Object.keys(colaboradoresSet).sort().map(id => ({ id: id, nombre: mapaColaboradores[id] || id }));
+
+    return { proyectos: proyectos, colaboradores: colaboradores, matriz: matriz };
   } catch (e) {
     console.error('Error en obtenerBonificaciones:', e);
-    return {
-      headers: [],
-      data: [],
-      totales: [],
-      error: e.message
-    };
-  }
-}
-
-
-
-/**
- * Guarda la ponderación (pesos) enviada desde la UI en la hoja `ponderacion`.
- * Estructura en la hoja:
- *   Fila 1: encabezado -> Proyecto | Colaborador 1 | Colaborador 2 | ...
- *   Filas siguientes: cada proyecto y los valores numéricos (0-100)
- * @param {object} pesosGuardados - objeto { proyecto: { 'Nombre': valor, ... }, ... }
- * @returns {string} mensaje de resultado
- */
-function guardarPonderacion(pesosGuardados) {
-  try {
-    if (!pesosGuardados || typeof pesosGuardados !== 'object') return 'Error: payload inválido.';
-
-    const ss = SpreadsheetApp.openById(getSpreadsheetId());
-    let sheet = ss.getSheetByName(HOJA_PONDERACION);
-    if (!sheet) {
-      sheet = ss.insertSheet(HOJA_PONDERACION);
-      sheet.getRange(1,1).setValue('Proyecto').setBackground('#2E86AB').setFontColor('white').setFontWeight('bold');
-    }
-
-    // Recolectar lista única de colaboradores según los proyectos recibidos
-    const proyectos = Object.keys(pesosGuardados).sort();
-    const colaboradoresSet = {};
-    proyectos.forEach(p => {
-      const mapCol = pesosGuardados[p] || {};
-      Object.keys(mapCol).forEach(col => { colaboradoresSet[col] = true; });
-    });
-    const colaboradores = Object.keys(colaboradoresSet).sort();
-
-    // Construir filas
-    const header = ['Proyecto', ...colaboradores];
-    const rows = [header];
-    proyectos.forEach(p => {
-      const row = [p];
-      colaboradores.forEach(c => {
-        const v = (pesosGuardados[p] && typeof pesosGuardados[p][c] !== 'undefined') ? Number(pesosGuardados[p][c]) : 0;
-        row.push(isNaN(v) ? 0 : v);
-      });
-      rows.push(row);
-    });
-
-    // Limpiar hoja y escribir nueva matriz
-    sheet.clear();
-    if (rows.length === 1) {
-      sheet.getRange(1,1).setValue('No hay datos para guardar.');
-      return 'Hoja ponderacion actualizada: sin datos.';
-    }
-
-    sheet.getRange(1,1, rows.length, rows[0].length).setValues(rows);
-    // Formatear encabezado
-    sheet.getRange(1,1,1, rows[0].length).setBackground('#2E86AB').setFontColor('white').setFontWeight('bold');
-    sheet.autoResizeColumns(1, rows[0].length);
-
-    return `Hoja '${HOJA_PONDERACION}' actualizada correctamente. Proyectos: ${proyectos.length}, Colaboradores: ${colaboradores.length}`;
-  } catch (e) {
-    console.error('Error en guardarPonderacion:', e);
-    return `Error al guardar ponderación: ${e.message}`;
-  }
-}
-
-/**
- * Lee la hoja `ponderacion` y devuelve la estructura { proyectos: [...], colaboradores: [...], matriz: { proyecto: { colaborador: valor } } }
- */
-function obtenerPonderacion() {
-  try {
-    const ss = SpreadsheetApp.openById(getSpreadsheetId());
-    const sheet = ss.getSheetByName(HOJA_PONDERACION);
-    if (!sheet) return { proyectos: [], colaboradores: [], matriz: {} };
-
-    const data = sheet.getDataRange().getValues();
-    if (!data || data.length < 1) return { proyectos: [], colaboradores: [], matriz: {} };
-
-    const header = data[0]; // ['Proyecto', 'ColA', 'ColB', ...]
-    const colaboradores = header.slice(1).map(h => {
-      // intentar extraer nombre antes de cualquier paréntesis '(ID)'
-      return String(h).replace(/\s*\(.+\)\s*$/, '').trim();
-    });
-
-    const proyectos = [];
-    const matriz = {};
-
-    for (let r = 1; r < data.length; r++) {
-      const row = data[r];
-      const proyecto = row[0] != null ? String(row[0]) : '';
-      if (!proyecto) continue;
-      proyectos.push(proyecto);
-      matriz[proyecto] = {};
-      for (let c = 1; c < header.length; c++) {
-        const colName = colaboradores[c - 1] || header[c];
-        const val = Number(row[c]) || 0;
-        matriz[proyecto][colName] = val;
-      }
-    }
-
-    return { proyectos: proyectos, colaboradores: colaboradores.map(c => ({ nombre: c })), matriz: matriz };
-  } catch (e) {
-    console.error('Error en obtenerPonderacion:', e);
     return { error: e.message };
+  }
+}
+
+/**
+ * Escribe la matriz de bonificaciones en la hoja `Bonificaciones`.
+ * Filas = proyectos, Columnas = colaboradores (encabezado con 'Nombre (ID)').
+ * @param {string} fechaDesde - 'yyyy-mm-dd'
+ * @param {string} fechaHasta - 'yyyy-mm-dd'
+ * @param {string} filtroBusqueda - texto opcional para filtrar colaboradores
+ * @returns {string} Mensaje de resultado
+ */
+function guardarBonificacionesEnHoja(fechaDesde, fechaHasta, filtroBusqueda) {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheetBon = ss.getSheetByName(HOJA_BONIFICACIONES) || ss.insertSheet(HOJA_BONIFICACIONES);
+
+    const resultado = obtenerBonificaciones(fechaDesde, fechaHasta, filtroBusqueda);
+    if (!resultado || resultado.error) {
+      return `Error al calcular bonificaciones: ${resultado && resultado.error ? resultado.error : 'resultado vacío'}`;
+    }
+
+    const proyectos = resultado.proyectos || [];
+    const colaboradores = resultado.colaboradores || [];
+    const matriz = resultado.matriz || {};
+
+    // Limpiar hoja
+    sheetBon.clear();
+
+    // Construir cabecera
+    const header = ['Proyecto'];
+    colaboradores.forEach(c => {
+      header.push(`${c.nombre} (${c.id})`);
+    });
+
+    const rows = [];
+    rows.push(header);
+
+    // Para cada proyecto, construir fila con conteos en orden de colaboradores
+    proyectos.forEach(p => {
+      const fila = [p];
+      colaboradores.forEach(c => {
+        const v = (matriz[p] && matriz[p][c.id]) ? matriz[p][c.id] : 0;
+        fila.push(v);
+      });
+      rows.push(fila);
+    });
+
+    if (rows.length === 1) {
+      // No hay proyectos/colaboradores: dejar una nota
+      sheetBon.getRange(1,1).setValue('No hay datos para el periodo o filtros seleccionados.');
+      return 'Hoja Bonificaciones actualizada: no hay datos para mostrar.';
+    }
+
+    // Escribir matriz en la hoja empezando en A1
+    sheetBon.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
+
+    // Formato de cabecera
+    sheetBon.getRange(1, 1, 1, rows[0].length).setBackground('#2E86AB').setFontColor('white').setFontWeight('bold');
+    sheetBon.autoResizeColumns(1, rows[0].length);
+
+    return `Hoja Bonificaciones actualizada correctamente. Proyectos: ${proyectos.length}, Colaboradores: ${colaboradores.length}`;
+  } catch (e) {
+    console.error('Error en guardarBonificacionesEnHoja:', e);
+    return `Error al guardar bonificaciones: ${e.message}`;
   }
 }
 

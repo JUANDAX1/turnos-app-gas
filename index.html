@@ -26,13 +26,7 @@
         <li class="nav-item" id="nav-consultas"><a class="nav-link" onclick="showTab('consultas', this)"><span class="nav-icon">🔍</span>Consultar Asistencia</a></li>
         <li class="nav-item" id="nav-proyectos"><a class="nav-link" onclick="showTab('proyectos', this)"><span class="nav-icon">🏗️</span>Registrar Proyectos</a></li>
         <li class="nav-item" id="nav-fondoscaja"><a class="nav-link" onclick="showTab('fondoscaja', this)"><span class="nav-icon">💰</span>Fondos de Caja</a></li>
-        <li class="nav-item has-submenu" id="nav-bonificaciones-parent">
-          <a class="nav-link" onclick="toggleSubmenu(event)"><span class="nav-icon">🎁</span>Bonificaciones</a>
-          <ul class="submenu">
-            <li class="nav-item" id="nav-bonificaciones"><a class="nav-link" onclick="showTab('bonificaciones', this)">Cálculo de Bonos</a></li>
-            <li class="nav-item" id="nav-pesos"><a class="nav-link" onclick="showTab('pesos', this)">Asignar Pesos</a></li>
-          </ul>
-        </li>
+        <li class="nav-item" id="nav-bonificaciones"><a class="nav-link" onclick="showTab('bonificaciones', this)"><span class="nav-icon">🎁</span>Bonificaciones</a></li>
         <li class="nav-item" id="nav-configuracion"><a class="nav-link" onclick="showTab('configuracion', this)"><span class="nav-icon">⚙️</span>Configuración</a></li>
       </ul>
     </nav>
@@ -366,20 +360,10 @@
             <div class="card-header">Tabla de Bonificaciones</div>
             <div class="card-body">
               <div id="loadingBonificaciones" class="loading">Cargando...</div>
+                <div class="actions" style="margin-bottom:12px;">
+                  <button class="btn" onclick="guardarBonificacionesHoja()">Guardar en Hoja</button>
+                </div>
                 <div class="table-container" id="tablaBonificaciones"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div id="pesos" class="tab-content">
-        <div class="content-header"><h2>Asignar Pesos / % por Proyecto</h2></div>
-        <div class="content-body">
-          <div class="card">
-            <div class="card-header">Tabla de Pesos</div>
-            <div class="card-body">
-              <div id="loadingPesos" class="loading">Cargando...</div>
-              <div class="table-container" id="tablaPesos"></div>
             </div>
           </div>
         </div>
@@ -402,6 +386,6 @@
     </div>
   </div>
 
-  <?!= include('javascript.html'); ?>
+  <script><?!= include('javascript.html'); ?></script>
 </body>
 </html>
