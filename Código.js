@@ -583,6 +583,17 @@ function inicializarSistema() {
       hojaContabilidad.getRange("C2:C").setDataValidation(regla);
     }
     
+    // Asegurar que existan columnas para almacenar información del vale (documento y PDF) y estado
+    const headersCont = hojaContabilidad.getRange(1, 1, 1, hojaContabilidad.getLastColumn()).getValues()[0];
+    const neededCols = ['URL_Vale', 'PDF_FileId', 'URL_PDF', 'Vale_Status'];
+    neededCols.forEach(colName => {
+      if (headersCont.indexOf(colName) === -1) {
+        hojaContabilidad.getRange(1, hojaContabilidad.getLastColumn() + 1).setValue(colName)
+          .setBackground('#2E86AB').setFontColor('white').setFontWeight('bold');
+      }
+    });
+    hojaContabilidad.autoResizeColumns(1, hojaContabilidad.getLastColumn());
+    
     return "Sistema inicializado correctamente. Todas las hojas han sido creadas y configuradas.";
   } catch (error) {
     console.error("Error en inicializarSistema:", error);
@@ -852,7 +863,8 @@ function registrarMovimientoCaja(movimiento) {
     const entrada = movimiento.tipoMovimiento === "entrada" ? movimiento.monto : 0;
     const salida = movimiento.tipoMovimiento === "salida" ? movimiento.monto : 0;
     
-    sheet.appendRow([
+    // Preparar fila a insertar
+    const nuevaFila = [
       movimiento.idColaborador,
       colaborador[1], // Nombre completo
       movimiento.tipoRegistro,
@@ -860,8 +872,81 @@ function registrarMovimientoCaja(movimiento) {
       salida,
       movimiento.detalle,
       new Date()
-    ]);
-    
+    ];
+
+    // Insertar la fila de forma manual para obtener el índice
+    const lastRow = sheet.getLastRow();
+    sheet.getRange(lastRow + 1, 1, 1, nuevaFila.length).setValues([nuevaFila]);
+
+    // Si la hoja tiene la columna URL_Vale, la ubicamos
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const idxUrl = headers.indexOf('URL_Vale');
+
+    // Si es una salida, generar un vale de caja en Google Docs con dos copias
+    if (movimiento.tipoMovimiento === "salida") {
+      try {
+        const filaInsertada = lastRow + 1;
+        const resultVale = generarValeCaja(movimiento, colaborador); // devuelve { fileId, url }
+
+        if (resultVale && resultVale.url && idxUrl !== -1) {
+          // Escribir la URL en la nueva fila
+          sheet.getRange(filaInsertada, idxUrl + 1).setValue(resultVale.url);
+        }
+
+        // Ahora generar PDF, guardarlo en carpeta y compartir/enviar
+        try {
+          const carpeta = crearCarpetaValesSiNoExiste();
+          const pdfInfo = guardarPdfDesdeDoc(resultVale.fileId, carpeta);
+
+          // Buscar emails
+          const emailColaborador = obtenerEmailColaborador(movimiento.idColaborador); // columna I en Colaboradores
+          const emailAdmin = obtenerEmailAdmin();
+
+          // Compartir con colaborador y admin (si existen)
+          const emailsACompartir = [];
+          if (emailColaborador) emailsACompartir.push(emailColaborador);
+          if (emailAdmin) emailsACompartir.push(emailAdmin);
+          if (emailsACompartir.length > 0) {
+            compartirArchivoConEmails(resultVale.fileId, emailsACompartir);
+            if (pdfInfo && pdfInfo.fileId) {
+              compartirArchivoConEmails(pdfInfo.fileId, emailsACompartir);
+            }
+          }
+
+          // Enviar correos con PDF adjunto
+          const subject = `Vale de Caja - ${colaborador[1]} - $${Number(movimiento.monto).toFixed(2)}`;
+          const body = `Adjunto encontrará el vale de caja por $${Number(movimiento.monto).toFixed(2)}.\n\nDetalle: ${movimiento.detalle}`;
+          if (emailColaborador) enviarCorreoConAdjunto(emailColaborador, subject, body, pdfInfo.fileId);
+          if (emailAdmin) enviarCorreoConAdjunto(emailAdmin, subject, body, pdfInfo.fileId);
+
+          // Escribir info del PDF y estado en la fila
+          const idxPdf = headers.indexOf('PDF_FileId');
+          const idxUrlPdf = headers.indexOf('URL_PDF');
+          const idxStatus = headers.indexOf('Vale_Status');
+          if (idxPdf !== -1 && pdfInfo && pdfInfo.fileId) {
+            sheet.getRange(filaInsertada, idxPdf + 1).setValue(pdfInfo.fileId);
+          }
+          if (idxUrlPdf !== -1 && pdfInfo && pdfInfo.url) {
+            sheet.getRange(filaInsertada, idxUrlPdf + 1).setValue(pdfInfo.url);
+          }
+          if (idxStatus !== -1) {
+            sheet.getRange(filaInsertada, idxStatus + 1).setValue('ENVIADO');
+          }
+        } catch (errFlow) {
+          console.error('Error en flujo de PDF/compartir/enviar:', errFlow);
+          if (idxUrl !== -1) sheet.getRange(filaInsertada, idxUrl + 1).setValue(resultVale.url || '');
+          // marcar estado de error
+          const idxStatusErr = headers.indexOf('Vale_Status');
+          if (idxStatusErr !== -1) sheet.getRange(filaInsertada, idxStatusErr + 1).setValue('ERROR');
+        }
+
+        return `Movimiento registrado correctamente. Vale de caja: ${resultVale && resultVale.url ? resultVale.url : 'No disponible'}`;
+      } catch (errVale) {
+        console.error('Error al generar vale de caja:', errVale);
+        return `Movimiento registrado correctamente. Pero no se pudo generar el vale: ${errVale.message}`;
+      }
+    }
+
     return "Movimiento registrado correctamente.";
   } catch (error) {
     console.error("Error en registrarMovimientoCaja:", error);
@@ -870,48 +955,119 @@ function registrarMovimientoCaja(movimiento) {
 }
 
 /**
+ * Genera un documento tipo "Vale de Caja" con dos copias (Administrador y Colaborador)
+ * y devuelve la URL del documento.
+ * @param {object} movimiento
+ * @param {Array} colaborador Fila con datos del colaborador [id, nombre]
+ * @returns {string} URL del documento creado
+ */
+function generarValeCaja(movimiento, colaborador) {
+  // Crear título y contenido base
+  const idCol = movimiento.idColaborador;
+  const nombre = colaborador[1] || '';
+  const fecha = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm');
+  const monto = movimiento.monto || 0;
+  const detalle = movimiento.detalle || '';
+
+  const titulo = `Vale de Caja - ${idCol} - ${nombre} - ${Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMddHHmmss')}`;
+
+  const doc = DocumentApp.create(titulo);
+  const body = doc.getBody();
+
+  // Encabezado general
+  const estiloTitulo = {};
+  body.appendParagraph('VALE DE CAJA').setHeading(DocumentApp.ParagraphHeading.HEADING1);
+
+  const tabla = body.appendTable();
+  tabla.appendTableRow().appendTableCell('Colaborador').appendTableCell(nombre);
+  tabla.appendTableRow().appendTableCell('ID Colaborador').appendTableCell(idCol);
+  tabla.appendTableRow().appendTableCell('Tipo de Registro').appendTableCell(movimiento.tipoRegistro || '');
+  tabla.appendTableRow().appendTableCell('Fecha').appendTableCell(fecha);
+  tabla.appendTableRow().appendTableCell('Monto entregado').appendTableCell(`$${Number(monto).toFixed(2)}`);
+  tabla.appendTableRow().appendTableCell('Detalle').appendTableCell(detalle);
+
+  body.appendParagraph('\nDECLARACIÓN:').setBold(true);
+  body.appendParagraph('El dinero entregado debe ser rendido o justificado en el plazo establecido por la empresa. Si el dinero no es rendido en el tiempo establecido, éste podrá ser descontado de la remuneración del colaborador según la normativa interna.');
+
+  body.appendParagraph('\n').appendPageBreak();
+
+  // Segunda copia
+  body.appendParagraph('COPIA - Colaborador').setHeading(DocumentApp.ParagraphHeading.HEADING2);
+  const tabla2 = body.appendTable();
+  tabla2.appendTableRow().appendTableCell('Colaborador').appendTableCell(nombre);
+  tabla2.appendTableRow().appendTableCell('ID Colaborador').appendTableCell(idCol);
+  tabla2.appendTableRow().appendTableCell('Monto entregado').appendTableCell(`$${Number(monto).toFixed(2)}`);
+
+  body.appendParagraph('\nFirma del Colaborador: ____________________________');
+  body.appendParagraph('\nFirma y Timbre del Administrador: ____________________________');
+
+  doc.saveAndClose();
+  const fileId = doc.getId();
+  const url = doc.getUrl();
+  return { fileId: fileId, url: url };
+}
+
+/**
  * Obtiene el resumen de saldos por colaborador.
  * @returns {Array<object>} Arreglo con los saldos por colaborador.
  */
-function obtenerResumenSaldos() {
+/**
+ * Obtiene el resumen de saldos por colaborador.
+ * Ahora acepta parámetros opcionales para búsqueda inteligente:
+ * - filtro: búsqueda parcial en id, nombre y tipoRegistro (case-insensitive)
+ * - nombreColaborador: filtro específico por nombre (parcial, case-insensitive)
+ * @param {object|string} opciones Puede ser un string (filtro) o un objeto { filtro, nombreColaborador }
+ * @returns {Array<object>} Arreglo con los saldos por colaborador filtrados
+ */
+function obtenerResumenSaldos(opciones) {
   try {
+    // Normalizar parámetros
+    let filtro = '';
+    let nombreColaborador = '';
+    if (typeof opciones === 'string') {
+      filtro = opciones;
+    } else if (typeof opciones === 'object' && opciones !== null) {
+      filtro = opciones.filtro || '';
+      nombreColaborador = opciones.nombreColaborador || '';
+    }
+
     const ss = SpreadsheetApp.openById(getSpreadsheetId());
     const sheet = ss.getSheetByName(HOJA_CONTABILIDAD);
     const data = sheet.getDataRange().getValues();
-    
+
     if (data.length <= 1) {
       return [];
     }
-    
+
     const saldos = {};
-    
+
     // Procesar cada registro
     for (let i = 1; i < data.length; i++) {
       const row = data[i];
-      const id = row[0].toString();
-      const nombre = row[1];
-      const tipoRegistro = row[2];
-      const entrada = row[3] || 0;
-      const salida = row[4] || 0;
-      
+      const id = row[0] != null ? row[0].toString() : '';
+      const nombre = row[1] != null ? row[1].toString() : '';
+      const tipoRegistro = row[2] != null ? row[2].toString() : '';
+      const entrada = Number(row[3]) || 0;
+      const salida = Number(row[4]) || 0;
+
       if (!saldos[id]) {
         saldos[id] = {
           nombre: nombre,
           tipos: {}
         };
       }
-      
+
       if (!saldos[id].tipos[tipoRegistro]) {
         saldos[id].tipos[tipoRegistro] = {
           entradas: 0,
           salidas: 0
         };
       }
-      
+
       saldos[id].tipos[tipoRegistro].entradas += entrada;
       saldos[id].tipos[tipoRegistro].salidas += salida;
     }
-    
+
     // Convertir a array y filtrar solo saldos positivos
     const resultado = [];
     for (const [id, info] of Object.entries(saldos)) {
@@ -927,10 +1083,163 @@ function obtenerResumenSaldos() {
         }
       }
     }
-    
-    return resultado;
+
+    // Si hay filtro, aplicar búsqueda parcial (case-insensitive) sobre id, nombre y tipoRegistro
+    const aplicarFiltro = (item) => {
+      if (!filtro && !nombreColaborador) return true;
+      const q = (filtro || '').toString().trim().toLowerCase();
+      const qName = (nombreColaborador || '').toString().trim().toLowerCase();
+
+      let pasaFiltro = true;
+      if (q) {
+        pasaFiltro = (
+          (item.id || '').toString().toLowerCase().indexOf(q) !== -1 ||
+          (item.nombre || '').toString().toLowerCase().indexOf(q) !== -1 ||
+          (item.tipoRegistro || '').toString().toLowerCase().indexOf(q) !== -1
+        );
+      }
+      if (qName) {
+        pasaFiltro = pasaFiltro && ((item.nombre || '').toString().toLowerCase().indexOf(qName) !== -1);
+      }
+      return pasaFiltro;
+    };
+
+    const filtrado = resultado.filter(aplicarFiltro);
+    return filtrado;
   } catch (error) {
     console.error("Error en obtenerResumenSaldos:", error);
     return [];
   }
 }
+
+// ===================== Funciones auxiliares para vales y envío =====================
+
+/**
+ * Obtiene el email del colaborador desde la hoja `Colaboradores`.
+ * Se asume que el email está en la columna I (índice 8, 0-based).
+ * @param {string} idColaborador
+ * @returns {string|null} email o null
+ */
+function obtenerEmailColaborador(idColaborador) {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_COLABORADORES);
+    const data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (row[0] != null && row[0].toString() === idColaborador.toString()) {
+        // Columna I -> índice 8
+        return row[8] ? row[8].toString().trim() : null;
+      }
+    }
+    return null;
+  } catch (e) {
+    console.error('Error en obtenerEmailColaborador:', e);
+    return null;
+  }
+}
+
+/**
+ * Obtiene un email de administrador desde la hoja `Usuarios` (primer admin encontrado).
+ * @returns {string|null}
+ */
+function obtenerEmailAdmin() {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_USUARIOS);
+    const data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      const email = data[i][0] ? data[i][0].toString().trim() : '';
+      const rol = data[i][1] ? data[i][1].toString().trim().toUpperCase() : '';
+      if (rol === ROLES.ADMIN && email) return email;
+    }
+    // fallback: usuario activo
+    return Session.getActiveUser().getEmail() || null;
+  } catch (e) {
+    console.error('Error en obtenerEmailAdmin:', e);
+    return null;
+  }
+}
+
+/**
+ * Crea (si no existe) una carpeta llamada 'Vales_Caja' en la raíz del Drive del usuario/script.
+ * @returns {Folder} carpeta creada o existente
+ */
+function crearCarpetaValesSiNoExiste() {
+  try {
+    const nombre = 'Vales_Caja';
+    const folders = DriveApp.getFoldersByName(nombre);
+    if (folders.hasNext()) {
+      return folders.next();
+    }
+    const folder = DriveApp.createFolder(nombre);
+    return folder;
+  } catch (e) {
+    console.error('Error en crearCarpetaValesSiNoExiste:', e);
+    throw e;
+  }
+}
+
+/**
+ * Genera un PDF a partir de un Google Doc y lo guarda en la carpeta indicada.
+ * @param {string} docId
+ * @param {Folder} carpeta
+ * @returns {object} { fileId, url }
+ */
+function guardarPdfDesdeDoc(docId, carpeta) {
+  try {
+    const fileDoc = DriveApp.getFileById(docId);
+    const blobPdf = fileDoc.getAs(MimeType.PDF);
+    const nombrePdf = fileDoc.getName() + '.pdf';
+    const filePdf = carpeta.createFile(blobPdf).setName(nombrePdf);
+    return { fileId: filePdf.getId(), url: filePdf.getUrl() };
+  } catch (e) {
+    console.error('Error en guardarPdfDesdeDoc:', e);
+    throw e;
+  }
+}
+
+/**
+ * Comparte un archivo (Docs o PDF) con una lista de emails como viewers.
+ * @param {string} fileId
+ * @param {Array<string>} emails
+ */
+function compartirArchivoConEmails(fileId, emails) {
+  try {
+    const file = DriveApp.getFileById(fileId);
+    emails.forEach(email => {
+      try {
+        file.addViewer(email);
+      } catch (e) {
+        console.warn('No se pudo compartir con', email, e);
+      }
+    });
+  } catch (e) {
+    console.error('Error en compartirArchivoConEmails:', e);
+  }
+}
+
+/**
+ * Envía un correo con el PDF adjunto (usando MailApp).
+ * @param {string} emailTo
+ * @param {string} subject
+ * @param {string} body
+ * @param {string} filePdfId
+ */
+function enviarCorreoConAdjunto(emailTo, subject, body, filePdfId) {
+  try {
+    if (!emailTo || !filePdfId) return;
+    const filePdf = DriveApp.getFileById(filePdfId);
+    const blob = filePdf.getAs(MimeType.PDF);
+    MailApp.sendEmail({
+      to: emailTo,
+      subject: subject,
+      body: body,
+      attachments: [blob]
+    });
+  } catch (e) {
+    console.error('Error en enviarCorreoConAdjunto:', e);
+  }
+}
+
+// ==============================================================================

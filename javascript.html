@@ -265,17 +265,15 @@ function consultarAsistencias(event) {
             const asignacionEscapada = (res.asignacion || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
             table += `
               <tr>
-                <td>${res.fecha}</td>
-                <td>${res.nombreColaborador}</td>
-                <td>${res.estado}</td>
-                <td>${res.asignacion || ''}</td>
-                <td>${res.observaciones}</td>
-                <td>
-                  <button class="btn btn-secondary" onclick="abrirModalEdicion(${res.idRegistro}, '${res.estado}', '${asignacionEscapada}', '${obsEscapadas}')">
-                    Editar
-                  </button>
-                </td>
-              </tr>
+                  <td>${res.fecha}</td>
+                  <td>${res.nombreColaborador}</td>
+                  <td>${res.estado}</td>
+                  <td>${res.asignacion || ''}</td>
+                  <td>${res.observaciones}</td>
+                  <td>
+                    <button class="btn btn-secondary" data-id="${res.idRegistro}" data-estado="${res.estado}" data-asignacion="${asignacionEscapada}" data-obs="${obsEscapadas}" onclick="abrirModalEdicionFromButton(this)">Editar</button>
+                  </td>
+                </tr>
             `;
         });
         table += '</tbody></table>';
@@ -290,6 +288,14 @@ function abrirModalEdicion(idRegistro, estadoActual, asignacionActual, obsActual
   document.getElementById('edit-asignacion').value = asignacionActual;
   document.getElementById('edit-observaciones').value = obsActual;
   document.getElementById('modal-edicion').style.display = 'flex';
+}
+
+function abrirModalEdicionFromButton(btn) {
+  const id = btn.getAttribute('data-id');
+  const estado = btn.getAttribute('data-estado');
+  const asignacion = btn.getAttribute('data-asignacion');
+  const obs = btn.getAttribute('data-obs');
+  abrirModalEdicion(id, estado, asignacion, obs);
 }
 
 function cerrarModalEdicion() {
@@ -357,12 +363,13 @@ function displayAsistenciaGrid(datos) {
 
   datos.registrosHoy.forEach(reg => {
     const colaborador = datos.colaboradores.find(c => c.id == reg.colaboradorId);
-    if (colaborador) {
+      if (colaborador) {
+      const isoNow = new Date().toISOString();
       resultsHtml += `
         <tr>
           <td>${colaborador.nombre}</td>
           <td>${reg.estado}</td>
-          <td><button class="btn btn-secondary" onclick="solicitarEliminarRegistro(${reg.idRegistro}, '${new Date().toISOString()}')">Editar</button></td>
+          <td><button class="btn btn-secondary" data-id="${reg.idRegistro}" data-fecha="${isoNow}" onclick="solicitarEliminarRegistroFromButton(this)">Editar</button></td>
         </tr>`;
       const index = colaboradoresSinRegistro.findIndex(c => c.id == reg.colaboradorId);
       if (index > -1) colaboradoresSinRegistro.splice(index, 1);
@@ -459,6 +466,22 @@ function guardarAsistencias() {
 function solicitarEliminarRegistro(idRegistro, fechaRegistro) {
   if (confirm('¿Está seguro de que desea editar este registro? Se eliminará para que pueda volver a ingresarlo.')) {
     const info = { idRegistro, fechaRegistro };
+    google.script.run
+      .withSuccessHandler(response => {
+        alert(response);
+        if (!response.includes('Error')) {
+          cargarVistaAsistencia();
+        }
+      })
+      .eliminarRegistroAsistencia(info);
+  }
+}
+
+function solicitarEliminarRegistroFromButton(btn) {
+  const id = btn.getAttribute('data-id');
+  const fecha = btn.getAttribute('data-fecha');
+  if (confirm('¿Está seguro de que desea editar este registro? Se eliminará para que pueda volver a ingresarlo.')) {
+    const info = { idRegistro: id, fechaRegistro: fecha };
     google.script.run
       .withSuccessHandler(response => {
         alert(response);
@@ -711,7 +734,48 @@ function registrarMovimientoCaja(event) {
   
   google.script.run
     .withSuccessHandler(function(response) {
-      showMessage('msgFondosCaja', response, 'success');
+      // Si la respuesta contiene una URL de vale, extraerla y mostrar acciones
+      const container = document.getElementById('msgFondosCaja');
+      let urlMatch = null;
+      try {
+        const possibleUrl = (response || '').toString();
+        const regex = /(https?:\/\/[^\s]+)/g;
+        const matches = possibleUrl.match(regex);
+        urlMatch = matches ? matches[0] : null;
+      } catch (e) { urlMatch = null; }
+
+      if (urlMatch) {
+        // Construir elementos DOM en vez de usar template literal para evitar problemas de parsing
+        container.innerHTML = '';
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'message success';
+        msgDiv.textContent = 'Movimiento registrado correctamente. ';
+
+        const link = document.createElement('a');
+        link.href = urlMatch;
+        link.target = '_blank';
+        link.textContent = 'Abrir Vale';
+        link.style.marginLeft = '8px';
+
+        const btnAbrir = document.createElement('button');
+        btnAbrir.className = 'btn';
+        btnAbrir.textContent = 'Abrir';
+        btnAbrir.onclick = function() { window.open(urlMatch, '_blank'); };
+        btnAbrir.style.marginLeft = '8px';
+
+        const btnImprimir = document.createElement('button');
+        btnImprimir.className = 'btn';
+        btnImprimir.textContent = 'Imprimir';
+        btnImprimir.onclick = function() { imprimirVale(urlMatch); };
+        btnImprimir.style.marginLeft = '8px';
+
+        container.appendChild(msgDiv);
+        container.appendChild(link);
+        container.appendChild(btnAbrir);
+        container.appendChild(btnImprimir);
+      } else {
+        showMessage('msgFondosCaja', response, 'success');
+      }
       document.getElementById('formFondosCaja').reset();
       cargarResumenSaldos();
     })
@@ -719,6 +783,11 @@ function registrarMovimientoCaja(event) {
       showMessage('msgFondosCaja', `Error: ${error}`, 'error');
     })
     .registrarMovimientoCaja(movimiento);
+}
+
+function imprimirVale(url) {
+  // Abre el documento en una nueva pestaña; el usuario puede usar la función de impresión del navegador.
+  window.open(url, '_blank');
 }
 
 function cargarResumenSaldos() {
