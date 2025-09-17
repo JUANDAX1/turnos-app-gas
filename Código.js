@@ -661,90 +661,91 @@ function consultarAsistencias(filtros) {
 }
 
 /**
- * Calcula la matriz de bonificaciones (conteo de días asignados por proyecto x colaborador)
- * @param {string} fechaDesde - 'yyyy-mm-dd'
- * @param {string} fechaHasta - 'yyyy-mm-dd'
+ * Lee y devuelve los datos de la tabla dinámica desde la hoja Bonificaciones, comenzando en A2.
  * @param {string} filtroBusqueda - texto opcional para filtrar colaboradores (id o nombre parcial)
- * @returns {object} { proyectos: [...], colaboradores: [...], matriz: { proyecto: { colaboradorId: count } } }
+ * @returns {object} { headers: [...], data: [...[]], totales: [...] } - Estructura de la tabla dinámica
  */
-function obtenerBonificaciones(fechaDesde, fechaHasta, filtroBusqueda) {
+function obtenerBonificaciones(filtroBusqueda) {
   try {
     const ss = SpreadsheetApp.openById(getSpreadsheetId());
-    const sheetAsistencia = ss.getSheetByName(HOJA_ASISTENCIA);
-    const sheetColaboradores = ss.getSheetByName(HOJA_COLABORADORES);
+    const sheetBonificaciones = ss.getSheetByName(HOJA_BONIFICACIONES);
+    
+    if (!sheetBonificaciones) {
+      throw new Error('No se encontró la hoja de Bonificaciones');
+    }
 
-    const colaboradoresData = sheetColaboradores.getDataRange().getValues().slice(1);
-    const asistenciaData = sheetAsistencia.getDataRange().getValues().slice(1);
+    // Encontrar el último dato en la hoja
+    const lastRow = sheetBonificaciones.getLastRow();
+    const lastCol = sheetBonificaciones.getLastColumn();
+    
+    if (lastRow < 2) { // Si no hay datos después de A2
+      return {
+        headers: [],
+        data: [],
+        totales: []
+      };
+    }
 
-    // Crear mapa ID -> Nombre (trimmed)
-    const mapaColaboradores = {};
-    colaboradoresData.forEach(r => {
-      const id = (r[0] != null) ? r[0].toString().trim() : '';
-      const nombre = (r[1] != null) ? r[1].toString().trim() : '';
-      if (id) mapaColaboradores[id] = nombre;
+    // Leer el rango de la tabla dinámica desde A2
+    const tableDynamicRange = sheetBonificaciones.getRange(2, 1, lastRow - 1, lastCol);
+    const data = tableDynamicRange.getValues();
+    
+    if (data.length === 0) {
+      return {
+        headers: [],
+        data: [],
+        totales: []
+      };
+    }
+
+    // Procesar los encabezados (primera fila de la tabla dinámica, que está en A2)
+    const headers = data[0].map(header => header.toString().trim());
+
+    // Obtener los datos excluyendo la fila de encabezado y la última fila de totales
+    const tableData = data.slice(1, -1);
+    
+    // Obtener la fila de totales (última fila)
+    const totales = data[data.length - 1];
+
+    // Si hay filtro de búsqueda, aplicarlo a las filas
+    let filteredData = tableData;
+    if (filtroBusqueda) {
+      const filtroLower = filtroBusqueda.toLowerCase();
+      filteredData = tableData.filter(row => {
+        // Buscar en todas las columnas
+        return row.some(cell => 
+          cell !== null && cell.toString().toLowerCase().includes(filtroLower)
+        );
+      });
+    }
+
+    // Formatear los números en los datos y totales
+    filteredData = filteredData.map(row => 
+      row.map(cell => {
+        if (cell === null || cell === '') return '';
+        return typeof cell === 'number' ? Number(cell.toFixed(2)) : cell;
+      })
+    );
+
+    const totalesFormateados = totales.map(cell => {
+      if (cell === null || cell === '') return '';
+      return typeof cell === 'number' ? Number(cell.toFixed(2)) : cell;
     });
 
-    const q = (filtroBusqueda || '').toString().trim().toLowerCase();
-
-    const desde = fechaDesde ? new Date(fechaDesde.replace(/-/g, '/')) : new Date('1970-01-01');
-    const hasta = fechaHasta ? new Date(fechaHasta.replace(/-/g, '/')) : new Date();
-    hasta.setHours(23,59,59,999);
-
-    const matriz = {};
-    const colaboradoresSet = {};
-
-    asistenciaData.forEach(row => {
-      try {
-        const rawId = row[1] != null ? row[1].toString().trim() : '';
-        if (!rawId) return;
-        // Aplicar filtro de colaborador si existe
-        if (q) {
-          const full = (rawId + ' ' + (mapaColaboradores[rawId] || '')).toLowerCase();
-          if (full.indexOf(q) === -1) return;
-        }
-
-        const fechaRegistro = row[2] ? new Date(row[2]) : null;
-        if (!fechaRegistro) return;
-        const fr = new Date(fechaRegistro.getFullYear(), fechaRegistro.getMonth(), fechaRegistro.getDate());
-        if (fr < new Date(desde.getFullYear(), desde.getMonth(), desde.getDate()) || fr > new Date(hasta.getFullYear(), hasta.getMonth(), hasta.getDate())) return;
-
-        const asignacion = row[4] != null ? row[4].toString().trim() : '';
-        if (!asignacion) return;
-
-        // Extraer nombre del proyecto: si contiene 'PROYECTO' intentar obtener la parte posterior, si no usar la asignacion tal cual
-        let proyectoNombre = '';
-        const up = asignacion.toUpperCase();
-        if (up.indexOf('PROYECTO') !== -1) {
-          // Buscar ':' y tomar lo que viene después, si no, quitar la palabra PROYECTO y posibles separadores
-          const idx = asignacion.indexOf(':');
-          if (idx !== -1) proyectoNombre = asignacion.substring(idx + 1).trim();
-          else proyectoNombre = asignacion.replace(/PROYECTO\s*-?\s*/i, '').trim();
-        } else {
-          proyectoNombre = asignacion;
-        }
-
-        if (!proyectoNombre) return;
-
-        // Normalizar claves
-        const projKey = proyectoNombre;
-        const colId = rawId;
-
-        if (!matriz[projKey]) matriz[projKey] = {};
-        matriz[projKey][colId] = (matriz[projKey][colId] || 0) + 1;
-        colaboradoresSet[colId] = true;
-      } catch (inner) {
-        // ignorar fila problemática
-      }
-    });
-
-    // Construir listas ordenadas
-    const proyectos = Object.keys(matriz).sort();
-    const colaboradores = Object.keys(colaboradoresSet).sort().map(id => ({ id: id, nombre: mapaColaboradores[id] || id }));
-
-    return { proyectos: proyectos, colaboradores: colaboradores, matriz: matriz };
+    return {
+      headers: headers,
+      data: filteredData,
+      totales: totalesFormateados,
+      rawData: data // Incluir datos crudos para depuración
+    };
   } catch (e) {
     console.error('Error en obtenerBonificaciones:', e);
-    return { error: e.message };
+    return {
+      headers: [],
+      data: [],
+      totales: [],
+      error: e.message
+    };
   }
 }
 
