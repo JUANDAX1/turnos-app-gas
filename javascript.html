@@ -734,45 +734,51 @@ function registrarMovimientoCaja(event) {
   
   google.script.run
     .withSuccessHandler(function(response) {
-      // Si la respuesta contiene una URL de vale, extraerla y mostrar acciones
       const container = document.getElementById('msgFondosCaja');
-      let urlMatch = null;
-      try {
-        const possibleUrl = (response || '').toString();
-        const regex = /(https?:\/\/[^\s]+)/g;
-        const matches = possibleUrl.match(regex);
-        urlMatch = matches ? matches[0] : null;
-      } catch (e) { urlMatch = null; }
+      container.innerHTML = '';
+      if (response && typeof response === 'object') {
+        if (!response.success) {
+          showMessage('msgFondosCaja', response.message || 'Error desconocido', 'error');
+          return;
+        }
 
-      if (urlMatch) {
-        // Construir elementos DOM en vez de usar template literal para evitar problemas de parsing
-        container.innerHTML = '';
+        // Mostrar mensaje y botones si existen URLs
         const msgDiv = document.createElement('div');
-        msgDiv.className = 'message success';
-        msgDiv.textContent = 'Movimiento registrado correctamente. ';
-
-        const link = document.createElement('a');
-        link.href = urlMatch;
-        link.target = '_blank';
-        link.textContent = 'Abrir Vale';
-        link.style.marginLeft = '8px';
-
-        const btnAbrir = document.createElement('button');
-        btnAbrir.className = 'btn';
-        btnAbrir.textContent = 'Abrir';
-        btnAbrir.onclick = function() { window.open(urlMatch, '_blank'); };
-        btnAbrir.style.marginLeft = '8px';
-
-        const btnImprimir = document.createElement('button');
-        btnImprimir.className = 'btn';
-        btnImprimir.textContent = 'Imprimir';
-        btnImprimir.onclick = function() { imprimirVale(urlMatch); };
-        btnImprimir.style.marginLeft = '8px';
-
+        msgDiv.className = 'message ' + (response.success ? 'success' : 'error');
+        msgDiv.textContent = response.message || '';
         container.appendChild(msgDiv);
-        container.appendChild(link);
-        container.appendChild(btnAbrir);
-        container.appendChild(btnImprimir);
+
+        if (response.valeUrl) {
+          const link = document.createElement('a');
+          link.href = response.valeUrl;
+          link.target = '_blank';
+          link.textContent = 'Abrir Vale (Doc)';
+          link.style.marginLeft = '8px';
+          container.appendChild(link);
+
+          const btnAbrir = document.createElement('button');
+          btnAbrir.className = 'btn';
+          btnAbrir.textContent = 'Abrir Doc';
+          btnAbrir.onclick = function() { window.open(response.valeUrl, '_blank'); };
+          btnAbrir.style.marginLeft = '8px';
+          container.appendChild(btnAbrir);
+        }
+
+        if (response.pdfUrl) {
+          const linkPdf = document.createElement('a');
+          linkPdf.href = response.pdfUrl;
+          linkPdf.target = '_blank';
+          linkPdf.textContent = 'Abrir Vale (PDF)';
+          linkPdf.style.marginLeft = '8px';
+          container.appendChild(linkPdf);
+
+          const btnPdf = document.createElement('button');
+          btnPdf.className = 'btn';
+          btnPdf.textContent = 'Abrir PDF';
+          btnPdf.onclick = function() { window.open(response.pdfUrl, '_blank'); };
+          btnPdf.style.marginLeft = '8px';
+          container.appendChild(btnPdf);
+        }
       } else {
         showMessage('msgFondosCaja', response, 'success');
       }

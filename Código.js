@@ -857,7 +857,7 @@ function registrarMovimientoCaja(movimiento) {
     const colaborador = colaboradoresData.find(row => row[0].toString() === movimiento.idColaborador.toString());
     
     if (!colaborador) {
-      return "Error: Colaborador no encontrado.";
+      return { success: false, message: "Error: Colaborador no encontrado." };
     }
     
     const entrada = movimiento.tipoMovimiento === "entrada" ? movimiento.monto : 0;
@@ -940,17 +940,17 @@ function registrarMovimientoCaja(movimiento) {
           if (idxStatusErr !== -1) sheet.getRange(filaInsertada, idxStatusErr + 1).setValue('ERROR');
         }
 
-        return `Movimiento registrado correctamente. Vale de caja: ${resultVale && resultVale.url ? resultVale.url : 'No disponible'}`;
+        return { success: true, message: 'Movimiento registrado correctamente.', valeUrl: resultVale && resultVale.url ? resultVale.url : null, pdfUrl: (typeof pdfInfo !== 'undefined' && pdfInfo && pdfInfo.url) ? pdfInfo.url : null };
       } catch (errVale) {
         console.error('Error al generar vale de caja:', errVale);
-        return `Movimiento registrado correctamente. Pero no se pudo generar el vale: ${errVale.message}`;
+        return { success: true, message: `Movimiento registrado correctamente. Pero no se pudo generar el vale: ${errVale.message}` };
       }
     }
 
-    return "Movimiento registrado correctamente.";
+    return { success: true, message: "Movimiento registrado correctamente." };
   } catch (error) {
     console.error("Error en registrarMovimientoCaja:", error);
-    return `Error al registrar el movimiento: ${error.message}`;
+    return { success: false, message: `Error al registrar el movimiento: ${error.message}` };
   }
 }
 
