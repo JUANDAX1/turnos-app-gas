@@ -86,140 +86,50 @@ Si quieres, actualizo este archivo con ejemplos de tests/unit (simples) o un che
     sueldoBase: 500000
   }
 
-  Llamada cliente: `google.script.run.registrarColaborador(colaborador)`
+```markdown
+# Instrucciones para agentes (rápido y accionable)
 
-- Guardar asistencias en lote (cada item):
+Este repo es una Web App en Google Apps Script (V8) para gestión de nómina/asistencia. Objetivo: dar a un agente AI el contexto mínimo para editar, añadir funciones y desplegar sin romper integraciones.
 
-  [{
-    colaboradorId: 'RUT123',
-    estado: 'Trabajado',
-    asignacion: 'Turno Mañana',
-    vehiculo: 'No Aplica',
-    horas: 8,
-    observaciones: ''
-  }, ...]
+Arquitectura esencial
+- Frontend: `index.html` (plantilla) + `javascript.html` y `styles.html`. El HTML usa `<?!= include('file') ?>` para inyectar partes.
+- Backend: `Código.js` contiene todas las funciones publicadas al cliente vía google.script.run.
+- Persistencia: una Spreadsheet (ID en `PropertiesService` con clave `SPREADSHEET_ID`). `inicializarSistema()` crea/normaliza hojas y formatos.
 
-  Llamada cliente: `google.script.run.registrarAsistenciasEnLote(asistencias, fecha)`
+Convenciones críticas (no las cambies sin migración)
+- Las hojas usan esquemas con índices fijos. Ej.: `Colaboradores` espera ID en A, nombre en B, email en I (índice 8 en 0-based). Revisa `inicializarSistema()` y funciones como `obtenerEmailColaborador`.
+- Las funciones devuelven strings legibles o `{ success: boolean, message, ... }`. El frontend asume estas formas para mostrar mensajes.
+- Manejo de errores: seguir patrón try/catch -> console.error(...) y retornar mensaje legible.
 
-- Registrar movimiento de caja (salida):
+Llamadas y ejemplos concretos
+- Registrar colaborador: cliente -> google.script.run.registrarColaborador(colaborador)
+  Ejemplo payload: { id:'RUT123', nombre:'Juan', fechaIngreso:'2023-06-01', sueldoBase:500000 }
+- Registrar asistencias en lote: google.script.run.registrarAsistenciasEnLote(asistencias, fecha)
+- Registrar movimiento caja (genera Doc + PDF + envía email): google.script.run.registrarMovimientoCaja(movimiento)
 
-  {
-    idColaborador: 'RUT123',
-    tipoRegistro: 'GASTO',
-    tipoMovimiento: 'salida',
-    monto: 12345.67,
-    detalle: 'Compra materiales' 
-  }
+Integraciones y permisos
+- Revisar `appsscript.json` antes de añadir APIs. Scopes actuales incluyen spreadsheets, drive, documents, drive.file, script.external_request y gmail.send.
+- Para forzar autorización de Drive/Mail, ejecutar `pruebaGenerarValeMock()` desde el editor de Apps Script.
 
-  Llamada cliente: `google.script.run.registrarMovimientoCaja(movimiento)`
+Desarrollo y despliegue rápido
+- Herramienta: clasp. Flujo típico:
+  - Editar localmente
+  - clasp push
+  - clasp deploy (o desplegar desde el editor web)
+- Verificar `SPREADSHEET_ID` en PropertiesService o ejecutar `inicializarSistema()` para crear las hojas.
 
-## Scripts / verificaciones rápidas
+Dónde buscar al modificar comportamiento
+- UI -> `javascript.html` (buscar llamadas `google.script.run` para entender contratos input/output).
+- Lógica servidor -> `Código.js` (buscar constantes HOJA_* y funciones: `registrarColaborador`, `registrarAsistenciasEnLote`, `calcularNomina`, `registrarMovimientoCaja`, `inicializarSistema`).
 
-1) Verificación básica de `SPREADSHEET_ID` (Apps Script snippet — ejecutar en editor):
+Notas para agentes AI
+- No reordenar columnas en hojas sin actualizar todas las lecturas/escrituras en `Código.js`.
+- Añade tests manuales mínimos cuando toques generación de Docs/PDFs: usa `pruebaGenerarValeMock()` para validar scope/Drive/Mail.
+- Mantén respuestas consistentes (string o objeto con success) para no romper el frontend.
 
-```javascript
-function verificarSpreadsheetId() {
-  const id = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
-  if (!id) {
-    Logger.log('SPREADSHEET_ID no encontrado en PropertiesService.');
+Si algo no está claro, dime qué sección quieres que amplíe (por ejemplo: mapa de columnas completo, checklist de despliegue con comandos, o ejemplos de payloads adicionales).
+
+```
     return false;
+
   }
-  try {
-    const ss = SpreadsheetApp.openById(id);
-    Logger.log('Spreadsheet accesible: ' + ss.getName());
-    return true;
-  } catch (e) {
-    Logger.log('No se pudo abrir la spreadsheet: ' + e.message);
-    return false;
-  }
-}
-```
-
-2) Script de prueba para generar vale (forzar autorización y flujo Drive/Mail):
-
-Usar la función ya existente `pruebaGenerarValeMock()` desde el editor de Apps Script. Si quieres una variante que retorne detalles adicionales:
-
-```javascript
-function pruebaGenerarValeMockVerbose() {
-  const res = pruebaGenerarValeMock();
-  Logger.log(JSON.stringify(res));
-  return res;
-}
-```
-
-3) Verificación local (PowerShell) — comandos útiles para desarrolladores:
-
-```powershell
-# Subir cambios locales a Apps Script
-clasp push
-
-# (Opcional) Crear un nuevo despliegue para forzar scopes
-clasp deploy --description "Iter deployment"
-
-# Verificar git y subir a remoto
-git add .; git commit -m "Update copilot instructions"; git push
-```
-
-4) Smoke test rápido (manual):
-
-- Ejecutar `doGet()` abriendo la URL del Web App (si ya está desplegada) y verificar que la UI carga y que el mensaje de verificación de acceso aparece.
-- Desde la UI: intentar registrar un colaborador de prueba, cargar una asistencia y registrar un movimiento de caja (entrada/salida con monto pequeño). Validar que las filas aparecen en las hojas correspondientes.
-
----
-He añadido checklist, ejemplos y scripts de verificación que puedes ejecutar inmediatamente. Voy a marcar la tarea de feedback como completada una vez confirmes que todo está OK o pidas ajustes.
-
-## Esquemas de hojas (mapa de columnas)
-
-Nota: los índices son 1-based (columna A = 1). Estas expectativas están codificadas en `inicializarSistema()` y en funciones que leen/actualizan filas.
-
-- `Colaboradores` (`HOJA_COLABORADORES`)
-  1. ID_Colaborador (A) — string
-  2. NombreCompleto (B)
-  3. Cargo (C)
-  4. Departamento (D)
-  5. FechaIngreso (E) — fecha
-  6. SueldoBase (F) — número
-  7. Estado (G) — 'Activo' / 'Inactivo'
-  8. FechaCreacion (H) — timestamp
-  9. Email (I) — usado por `obtenerEmailColaborador`
-
-- `RegistrosAsistencia` (`HOJA_ASISTENCIA`)
-  1. ID_Registro (A) — número incremental
-  2. ID_Colaborador (B)
-  3. Fecha (C) — fecha
-  4. EstadoAsistencia (D)
-  5. Asignacion (E)
-  6. Vehiculo (F)
-  7. HorasTrabajadas (G)
-  8. Observaciones (H)
-  9. Timestamp (I)
-
-- `Configuracion` (`HOJA_CONFIG`)
-  - Columnas usadas: A..C (Cargos, Departamentos, EstadosAsistencia), G (Turno/Asignacion/Obra), K (Vehiculo_a_cargo), N (Tipos de registro para contabilidad). Contiene listas que se usan como dropdowns en el UI.
-
-- `Usuarios` (`HOJA_USUARIOS`)
-  1. Email (A)
-  2. Rol (B) — valores esperados: `ADMINISTRADOR`, `ASISTENTE`
-
-- `Project_list` (`HOJA_PROYECTOS`)
-  1. project_code (A)
-  2. project_name (B)
-  3. registration_date (C)
-  4. project_address (D)
-  5. project_georeference (E)
-  6. project_contact (F)
-  7. project_observation (G)
-  8. Timestamp (H)
-
-- `contabilidad1` (`HOJA_CONTABILIDAD`)
-  1. ID_Colaborador
-  2. NombreCompleto
-  3. Tipo_registro
-  4. ENTRADA_$
-  5. SALIDA_$
-  6. Detalle_transaccion
-  7. Timestamp
-  (columnas adicionales añadidas por `inicializarSistema()`): `URL_Vale`, `PDF_FileId`, `URL_PDF`, `Vale_Status`
-
-Mantén estos esquemas en mente: cambiar el orden o insertar columnas sin actualizar `Código.js` romperá las funciones que mappean índices fijos.
-
