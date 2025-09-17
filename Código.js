@@ -979,12 +979,24 @@ function generarValeCaja(movimiento, colaborador) {
   body.appendParagraph('VALE DE CAJA').setHeading(DocumentApp.ParagraphHeading.HEADING1);
 
   const tabla = body.appendTable();
-  tabla.appendTableRow().appendTableCell('Colaborador').appendTableCell(nombre);
-  tabla.appendTableRow().appendTableCell('ID Colaborador').appendTableCell(idCol);
-  tabla.appendTableRow().appendTableCell('Tipo de Registro').appendTableCell(movimiento.tipoRegistro || '');
-  tabla.appendTableRow().appendTableCell('Fecha').appendTableCell(fecha);
-  tabla.appendTableRow().appendTableCell('Monto entregado').appendTableCell(`$${Number(monto).toFixed(2)}`);
-  tabla.appendTableRow().appendTableCell('Detalle').appendTableCell(detalle);
+  let row = tabla.appendTableRow();
+  row.appendTableCell('Colaborador');
+  row.appendTableCell(nombre);
+  row = tabla.appendTableRow();
+  row.appendTableCell('ID Colaborador');
+  row.appendTableCell(idCol);
+  row = tabla.appendTableRow();
+  row.appendTableCell('Tipo de Registro');
+  row.appendTableCell(movimiento.tipoRegistro || '');
+  row = tabla.appendTableRow();
+  row.appendTableCell('Fecha');
+  row.appendTableCell(fecha);
+  row = tabla.appendTableRow();
+  row.appendTableCell('Monto entregado');
+  row.appendTableCell(`$${Number(monto).toFixed(2)}`);
+  row = tabla.appendTableRow();
+  row.appendTableCell('Detalle');
+  row.appendTableCell(detalle);
 
   body.appendParagraph('\nDECLARACIÓN:').setBold(true);
   body.appendParagraph('El dinero entregado debe ser rendido o justificado en el plazo establecido por la empresa. Si el dinero no es rendido en el tiempo establecido, éste podrá ser descontado de la remuneración del colaborador según la normativa interna.');
@@ -994,9 +1006,15 @@ function generarValeCaja(movimiento, colaborador) {
   // Segunda copia
   body.appendParagraph('COPIA - Colaborador').setHeading(DocumentApp.ParagraphHeading.HEADING2);
   const tabla2 = body.appendTable();
-  tabla2.appendTableRow().appendTableCell('Colaborador').appendTableCell(nombre);
-  tabla2.appendTableRow().appendTableCell('ID Colaborador').appendTableCell(idCol);
-  tabla2.appendTableRow().appendTableCell('Monto entregado').appendTableCell(`$${Number(monto).toFixed(2)}`);
+  row = tabla2.appendTableRow();
+  row.appendTableCell('Colaborador');
+  row.appendTableCell(nombre);
+  row = tabla2.appendTableRow();
+  row.appendTableCell('ID Colaborador');
+  row.appendTableCell(idCol);
+  row = tabla2.appendTableRow();
+  row.appendTableCell('Monto entregado');
+  row.appendTableCell(`$${Number(monto).toFixed(2)}`);
 
   body.appendParagraph('\nFirma del Colaborador: ____________________________');
   body.appendParagraph('\nFirma y Timbre del Administrador: ____________________________');
@@ -1005,6 +1023,39 @@ function generarValeCaja(movimiento, colaborador) {
   const fileId = doc.getId();
   const url = doc.getUrl();
   return { fileId: fileId, url: url };
+}
+
+/**
+ * Función temporal de prueba para generar un vale con datos mock.
+ * Úsala desde el editor de Apps Script para forzar la pantalla de autorización
+ * y verificar que la generación de documentos y PDFs funciona correctamente.
+ */
+function pruebaGenerarValeMock() {
+  const movimientoMock = {
+    idColaborador: 'MOCK123',
+    tipoMovimiento: 'salida',
+    tipoRegistro: 'GASTO',
+    monto: 123.45,
+    detalle: 'Gasto de prueba generado por pruebaGenerarValeMock'
+  };
+
+  // Buscamos un colaborador real en la hoja; si no existe, usamos un nombre genérico
+  const ss = SpreadsheetApp.openById(getSpreadsheetId());
+  const sheetCol = ss.getSheetByName(HOJA_COLABORADORES);
+  const dataCol = sheetCol.getDataRange().getValues();
+  let colaborador = null;
+  if (dataCol.length > 1) {
+    // Tomar el primer colaborador real
+    colaborador = [dataCol[1][0], dataCol[1][1]];
+    movimientoMock.idColaborador = dataCol[1][0];
+  } else {
+    colaborador = [movimientoMock.idColaborador, 'Colaborador de Prueba'];
+  }
+
+  // Llamar a generarValeCaja directamente para forzar la creación del Doc
+  const resultado = generarValeCaja(movimientoMock, colaborador);
+  Logger.log('Resultado pruebaGenerarValeMock: %s', JSON.stringify(resultado));
+  return resultado;
 }
 
 /**
