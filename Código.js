@@ -669,66 +669,83 @@ function obtenerBonificaciones(filtroBusqueda) {
   try {
     const ss = SpreadsheetApp.openById(getSpreadsheetId());
     const sheetBonificaciones = ss.getSheetByName(HOJA_BONIFICACIONES);
-
+    
     if (!sheetBonificaciones) {
       throw new Error('No se encontró la hoja de Bonificaciones');
     }
 
+    // Encontrar el último dato en la hoja
     const lastRow = sheetBonificaciones.getLastRow();
     const lastCol = sheetBonificaciones.getLastColumn();
-
-    // Si no hay filas a partir de la fila 2, devolver vacío
-    if (lastRow < 2) {
-      return { headers: [], data: [], totales: [] };
+    
+    if (lastRow < 2) { // Si no hay datos después de A2
+      return {
+        headers: [],
+        data: [],
+        totales: []
+      };
     }
 
-    // Leer el bloque dinámico que empieza en A2
-    const numRows = lastRow - 1; // filas desde la 2 hasta lastRow
-    const tableRange = sheetBonificaciones.getRange(2, 1, numRows, lastCol);
-    const raw = tableRange.getValues();
-
-    if (!raw || raw.length === 0) {
-      return { headers: [], data: [], totales: [] };
+    // Leer el rango de la tabla dinámica desde A2
+    const tableDynamicRange = sheetBonificaciones.getRange(2, 1, lastRow - 1, lastCol);
+    const data = tableDynamicRange.getValues();
+    
+    if (data.length === 0) {
+      return {
+        headers: [],
+        data: [],
+        totales: []
+      };
     }
 
-    // Encabezados están en la primera fila del bloque (A2)
-    const headers = raw[0].map(h => (h === null || typeof h === 'undefined') ? '' : String(h).trim());
+    // Procesar los encabezados (primera fila de la tabla dinámica, que está en A2)
+    const headers = data[0].map(header => header.toString().trim());
 
-    // Si solo existe la fila de encabezado, devolverla sin datos
-    if (raw.length === 1) {
-      return { headers: headers, data: [], totales: [], rawData: raw };
-    }
+    // Obtener los datos excluyendo la fila de encabezado y la última fila de totales
+    const tableData = data.slice(1, -1);
+    
+    // Obtener la fila de totales (última fila)
+    const totales = data[data.length - 1];
 
-    // Filas de datos (posiblemente con una fila de totales al final)
-    let rows = raw.slice(1);
-
-    // Detectar si la última fila es una fila de totales (ej: primera celda vacía o contiene 'total')
-    let totales = [];
-    if (rows.length > 0) {
-      const last = rows[rows.length - 1];
-      const firstCell = (last[0] !== null && typeof last[0] !== 'undefined') ? String(last[0]).toLowerCase().trim() : '';
-      const looksLikeTotals = (firstCell === '' || firstCell.indexOf('total') !== -1 || firstCell.indexOf('totales') !== -1 || firstCell.indexOf('suma') !== -1 || firstCell.indexOf('subtotal') !== -1);
-      if (looksLikeTotals) {
-        // Separar totales y quitar del conjunto de filas
-        totales = last.map(cell => (cell === null || cell === '') ? '' : (typeof cell === 'number' ? Number(cell.toFixed(2)) : cell));
-        rows = rows.slice(0, -1);
-      }
-    }
-
-    // Aplicar filtro de búsqueda si existe
-    let filtered = rows;
+    // Si hay filtro de búsqueda, aplicarlo a las filas
+    let filteredData = tableData;
     if (filtroBusqueda) {
-      const q = String(filtroBusqueda).toLowerCase();
-      filtered = rows.filter(r => r.some(c => c !== null && String(c).toLowerCase().indexOf(q) !== -1));
+      const filtroLower = filtroBusqueda.toLowerCase();
+      filteredData = tableData.filter(row => {
+        // Buscar en todas las columnas
+        return row.some(cell => 
+          cell !== null && cell.toString().toLowerCase().includes(filtroLower)
+        );
+      });
     }
 
-    // Formatear números en filas resultantes
-    filtered = filtered.map(r => r.map(cell => (cell === null || cell === '') ? '' : (typeof cell === 'number' ? Number(cell.toFixed(2)) : cell)));
+    // Formatear los números en los datos y totales
+    filteredData = filteredData.map(row => 
+      row.map(cell => {
+        if (cell === null || cell === '') return '';
+        return typeof cell === 'number' ? Number(cell.toFixed(2)) : cell;
+      })
+    );
 
-    return { headers: headers, data: filtered, totales: totales, rawData: raw };
+    const totalesFormateados = totales.map(cell => {
+      if (cell === null || cell === '') return '';
+      return typeof cell === 'number' ? Number(cell.toFixed(2)) : cell;
+    });
+
+    return {
+      headers: headers,
+      data: filteredData,
+      totales: totalesFormateados,
+      rawData: data // Incluir datos crudos para depuración
+    };
   } catch (e) {
     console.error('Error en obtenerBonificaciones:', e);
-    return { headers: [], data: [], totales: [], error: e.message };
+    return {
+      headers: [],
+      data: [],
+      totales: [],
+      error: e.message
+    };
   }
 }
 
