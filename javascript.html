@@ -1,3 +1,4 @@
+<script>
 let USER_ROLE = null;
 
 document.addEventListener("DOMContentLoaded", function() {
@@ -57,6 +58,12 @@ function setDefaultDates() {
   document.getElementById('consulta-fecha-hasta').valueAsDate = today;
 }
 
+function toggleSubmenu(event) {
+  event.preventDefault();
+  const parent = event.target.closest('.has-submenu');
+  parent.classList.toggle('open');
+}
+
 function showTab(tabName, clickedLink) {
   document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
   document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
@@ -68,6 +75,10 @@ function showTab(tabName, clickedLink) {
   } else if (tabName === 'fondoscaja') {
     cargarListasFondosCaja();
     cargarResumenSaldos();
+  } else if (tabName === 'bonificaciones') {
+    cargarBonificaciones();
+  } else if (tabName === 'pesos') {
+    cargarPesos();
   }
 }
 
@@ -872,6 +883,14 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 100);
       });
     }
+
+    // Agregar evento para la pestaña Pesos
+    const tabPesos = document.getElementById('nav-pesos');
+    if (tabPesos) {
+      tabPesos.querySelector('a').addEventListener('click', function() {
+        setTimeout(cargarPesos, 100);
+      });
+    }
 });
 
   function cargarBonificaciones(event) {
@@ -907,7 +926,7 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
 
-    // Construir tabla HTML
+    // Construir tabla HTML de conteos
     const html = construirTablaBonificaciones(data.proyectos, data.colaboradores, data.matriz);
     container.innerHTML = html;
   }
@@ -931,21 +950,100 @@ document.addEventListener('DOMContentLoaded', function() {
     return table;
   }
 
-  function guardarBonificacionesHoja() {
-    const desde = document.getElementById('bon-fecha-desde').value;
-    const hasta = document.getElementById('bon-fecha-hasta').value;
-    const filtro = document.getElementById('bon-filtro').value;
-    const btn = event && event.target ? event.target : null;
-    if (btn) btn.disabled = true;
-    showMessage('tablaBonificaciones', 'Guardando en hoja...', 'info');
+  function cargarPesos() {
+    const loading = document.getElementById('loadingPesos');
+    const container = document.getElementById('tablaPesos');
+    loading.style.display = 'block';
+    container.innerHTML = '';
+
+    google.script.run
+      .withSuccessHandler(function(data) {
+        loading.style.display = 'none';
+        if (data.error) {
+          container.innerHTML = `<div class="message error">${data.error}</div>`;
+          return;
+        }
+        const pesosHtml = construirTablaPesos(data.proyectos, data.colaboradores, data.matriz);
+        container.innerHTML = pesosHtml;
+      })
+      .withFailureHandler(function(err){
+        loading.style.display = 'none';
+        container.innerHTML = `<div class="message error">${err.message}</div>`;
+      })
+      .obtenerPonderacion();
+  }
+
+  // Construye la tabla para ingresar pesos (porcentaje 0-100)
+  function construirTablaPesos(proyectos, colaboradores, valoresMatriz) {
+    let html = '';
+    html += '<div class="pesos-container">';
+    html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;"><strong>Asignar Pesos / % por Proyecto</strong><div></div></div>';
+    html += '<div style="overflow:auto">';
+    html += '<table class="tabla-pesos" style="width:100%; border-collapse:collapse; margin-top:8px;"><thead><tr><th style="border:1px solid #e0e0e0; padding:6px 8px; background:#f5f7fa; text-align:left;">Proyecto</th>';
+    colaboradores.forEach(col => { html += `<th style="border:1px solid #e0e0e0; padding:6px 8px; background:#f5f7fa;">${col.nombre}</th>`; });
+    html += '</tr></thead><tbody>';
+
+    proyectos.forEach((p, pi) => {
+      html += `<tr><td style="text-align:left;padding:8px 10px;border:1px solid #e0e0e0"><strong>${p}</strong></td>`;
+      colaboradores.forEach((col, ci) => {
+        const inputId = 'peso-' + pi + '-' + ci;
+        // obtener valor inicial desde valoresMatriz si existe
+        let inicial = 0;
+        try {
+          if (valoresMatriz && valoresMatriz[p] && typeof valoresMatriz[p][col.nombre] !== 'undefined') {
+            inicial = Number(valoresMatriz[p][col.nombre]) || 0;
+          }
+        } catch (e) { inicial = 0; }
+
+        html += '<td style="border:1px solid #e0e0e0; padding:6px 8px; text-align:center">' +
+                `<input id="${inputId}" style="width:70px; padding:6px; border:1px solid #cfcfcf; border-radius:4px; text-align:right" type="number" min="0" max="100" step="1" value="${inicial}" data-project="${escapeHtml(p)}" data-colaborador="${escapeHtml(col.nombre)}">` +
+                '</td>';
+      });
+      html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+    html += '</div>';
+    html += '<div class="actions" style="display:flex; gap:8px; justify-content:flex-end; margin-top:8px;">';
+    html += '<button class="btn btn-primary btn-guardar-pesos" onclick="guardarPesos()">Guardar Pesos</button>';
+    html += '</div>';
+    html += '</div>';
+    return html;
+  }
+
+  // Escapa texto simple para atributos HTML
+  function escapeHtml(str) {
+    if (!str && str !== 0) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  // Lee todos los inputs de la tabla de pesos y arma el objeto a enviar al servidor
+  function guardarPesos() {
+    const container = document.getElementById('tablaPesos');
+    if (!container) return showMessage('pesos', 'No se encontró el contenedor de pesos.', 'error');
+
+    // Seleccionar todos los inputs que agregamos
+    const inputs = container.querySelectorAll('input[id^="peso-"]');
+    const pesosGuardados = {};
+
+    inputs.forEach(input => {
+      const project = input.dataset.project;
+      const colaborador = input.dataset.colaborador;
+      let val = parseInt(input.value, 10);
+      if (isNaN(val) || val < 0) val = 0;
+      if (val > 100) val = 100;
+
+      if (!pesosGuardados[project]) pesosGuardados[project] = {};
+      pesosGuardados[project][colaborador] = val;
+    });
+
+    // Llamar al servidor para guardar
+    showMessage('pesos', 'Guardando ponderación en hoja...', 'info');
     google.script.run
       .withSuccessHandler(res => {
-        showMessage('tablaBonificaciones', res, res && res.toString().toLowerCase().indexOf('error') === -1 ? 'success' : 'error');
-        if (btn) btn.disabled = false;
+        showMessage('pesos', res, res && res.toString().toLowerCase().indexOf('error') === -1 ? 'success' : 'error');
       })
-      .withFailureHandler(err => {
-        showMessage('tablaBonificaciones', `Error: ${err.message}`, 'error');
-        if (btn) btn.disabled = false;
-      })
-      .guardarBonificacionesEnHoja(desde, hasta, filtro);
+      .withFailureHandler(err => showMessage('pesos', `Error: ${err.message}`, 'error'))
+      .guardarPonderacion(pesosGuardados);
   }
+  </script>

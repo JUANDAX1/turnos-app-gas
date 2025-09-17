@@ -35,6 +35,7 @@ const HOJA_USUARIOS = "Usuarios";
 const HOJA_PROYECTOS = "Project_list";
 const HOJA_CONTABILIDAD = "contabilidad1";
   const HOJA_BONIFICACIONES = "Bonificaciones";
+const HOJA_PONDERACION = "ponderacion";
 
 const ROLES = {
   ADMIN: "ADMINISTRADOR",
@@ -747,67 +748,105 @@ function obtenerBonificaciones(fechaDesde, fechaHasta, filtroBusqueda) {
   }
 }
 
+
+
 /**
- * Escribe la matriz de bonificaciones en la hoja `Bonificaciones`.
- * Filas = proyectos, Columnas = colaboradores (encabezado con 'Nombre (ID)').
- * @param {string} fechaDesde - 'yyyy-mm-dd'
- * @param {string} fechaHasta - 'yyyy-mm-dd'
- * @param {string} filtroBusqueda - texto opcional para filtrar colaboradores
- * @returns {string} Mensaje de resultado
+ * Guarda la ponderación (pesos) enviada desde la UI en la hoja `ponderacion`.
+ * Estructura en la hoja:
+ *   Fila 1: encabezado -> Proyecto | Colaborador 1 | Colaborador 2 | ...
+ *   Filas siguientes: cada proyecto y los valores numéricos (0-100)
+ * @param {object} pesosGuardados - objeto { proyecto: { 'Nombre': valor, ... }, ... }
+ * @returns {string} mensaje de resultado
  */
-function guardarBonificacionesEnHoja(fechaDesde, fechaHasta, filtroBusqueda) {
+function guardarPonderacion(pesosGuardados) {
+  try {
+    if (!pesosGuardados || typeof pesosGuardados !== 'object') return 'Error: payload inválido.';
+
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    let sheet = ss.getSheetByName(HOJA_PONDERACION);
+    if (!sheet) {
+      sheet = ss.insertSheet(HOJA_PONDERACION);
+      sheet.getRange(1,1).setValue('Proyecto').setBackground('#2E86AB').setFontColor('white').setFontWeight('bold');
+    }
+
+    // Recolectar lista única de colaboradores según los proyectos recibidos
+    const proyectos = Object.keys(pesosGuardados).sort();
+    const colaboradoresSet = {};
+    proyectos.forEach(p => {
+      const mapCol = pesosGuardados[p] || {};
+      Object.keys(mapCol).forEach(col => { colaboradoresSet[col] = true; });
+    });
+    const colaboradores = Object.keys(colaboradoresSet).sort();
+
+    // Construir filas
+    const header = ['Proyecto', ...colaboradores];
+    const rows = [header];
+    proyectos.forEach(p => {
+      const row = [p];
+      colaboradores.forEach(c => {
+        const v = (pesosGuardados[p] && typeof pesosGuardados[p][c] !== 'undefined') ? Number(pesosGuardados[p][c]) : 0;
+        row.push(isNaN(v) ? 0 : v);
+      });
+      rows.push(row);
+    });
+
+    // Limpiar hoja y escribir nueva matriz
+    sheet.clear();
+    if (rows.length === 1) {
+      sheet.getRange(1,1).setValue('No hay datos para guardar.');
+      return 'Hoja ponderacion actualizada: sin datos.';
+    }
+
+    sheet.getRange(1,1, rows.length, rows[0].length).setValues(rows);
+    // Formatear encabezado
+    sheet.getRange(1,1,1, rows[0].length).setBackground('#2E86AB').setFontColor('white').setFontWeight('bold');
+    sheet.autoResizeColumns(1, rows[0].length);
+
+    return `Hoja '${HOJA_PONDERACION}' actualizada correctamente. Proyectos: ${proyectos.length}, Colaboradores: ${colaboradores.length}`;
+  } catch (e) {
+    console.error('Error en guardarPonderacion:', e);
+    return `Error al guardar ponderación: ${e.message}`;
+  }
+}
+
+/**
+ * Lee la hoja `ponderacion` y devuelve la estructura { proyectos: [...], colaboradores: [...], matriz: { proyecto: { colaborador: valor } } }
+ */
+function obtenerPonderacion() {
   try {
     const ss = SpreadsheetApp.openById(getSpreadsheetId());
-    const sheetBon = ss.getSheetByName(HOJA_BONIFICACIONES) || ss.insertSheet(HOJA_BONIFICACIONES);
+    const sheet = ss.getSheetByName(HOJA_PONDERACION);
+    if (!sheet) return { proyectos: [], colaboradores: [], matriz: {} };
 
-    const resultado = obtenerBonificaciones(fechaDesde, fechaHasta, filtroBusqueda);
-    if (!resultado || resultado.error) {
-      return `Error al calcular bonificaciones: ${resultado && resultado.error ? resultado.error : 'resultado vacío'}`;
-    }
+    const data = sheet.getDataRange().getValues();
+    if (!data || data.length < 1) return { proyectos: [], colaboradores: [], matriz: {} };
 
-    const proyectos = resultado.proyectos || [];
-    const colaboradores = resultado.colaboradores || [];
-    const matriz = resultado.matriz || {};
-
-    // Limpiar hoja
-    sheetBon.clear();
-
-    // Construir cabecera
-    const header = ['Proyecto'];
-    colaboradores.forEach(c => {
-      header.push(`${c.nombre} (${c.id})`);
+    const header = data[0]; // ['Proyecto', 'ColA', 'ColB', ...]
+    const colaboradores = header.slice(1).map(h => {
+      // intentar extraer nombre antes de cualquier paréntesis '(ID)'
+      return String(h).replace(/\s*\(.+\)\s*$/, '').trim();
     });
 
-    const rows = [];
-    rows.push(header);
+    const proyectos = [];
+    const matriz = {};
 
-    // Para cada proyecto, construir fila con conteos en orden de colaboradores
-    proyectos.forEach(p => {
-      const fila = [p];
-      colaboradores.forEach(c => {
-        const v = (matriz[p] && matriz[p][c.id]) ? matriz[p][c.id] : 0;
-        fila.push(v);
-      });
-      rows.push(fila);
-    });
-
-    if (rows.length === 1) {
-      // No hay proyectos/colaboradores: dejar una nota
-      sheetBon.getRange(1,1).setValue('No hay datos para el periodo o filtros seleccionados.');
-      return 'Hoja Bonificaciones actualizada: no hay datos para mostrar.';
+    for (let r = 1; r < data.length; r++) {
+      const row = data[r];
+      const proyecto = row[0] != null ? String(row[0]) : '';
+      if (!proyecto) continue;
+      proyectos.push(proyecto);
+      matriz[proyecto] = {};
+      for (let c = 1; c < header.length; c++) {
+        const colName = colaboradores[c - 1] || header[c];
+        const val = Number(row[c]) || 0;
+        matriz[proyecto][colName] = val;
+      }
     }
 
-    // Escribir matriz en la hoja empezando en A1
-    sheetBon.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
-
-    // Formato de cabecera
-    sheetBon.getRange(1, 1, 1, rows[0].length).setBackground('#2E86AB').setFontColor('white').setFontWeight('bold');
-    sheetBon.autoResizeColumns(1, rows[0].length);
-
-    return `Hoja Bonificaciones actualizada correctamente. Proyectos: ${proyectos.length}, Colaboradores: ${colaboradores.length}`;
+    return { proyectos: proyectos, colaboradores: colaboradores.map(c => ({ nombre: c })), matriz: matriz };
   } catch (e) {
-    console.error('Error en guardarBonificacionesEnHoja:', e);
-    return `Error al guardar bonificaciones: ${e.message}`;
+    console.error('Error en obtenerPonderacion:', e);
+    return { error: e.message };
   }
 }
 
