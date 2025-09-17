@@ -20,8 +20,10 @@ This is a web application built on Google Apps Script that serves as a Human Res
 - `javascript.html`: Contains all client-side JavaScript logic. It is injected into `index.html` and handles UI interactions, form submissions, and communication with the backend via `google.script.run`.
 - `styles.html`: Contains all CSS styles for the application. It is injected into `index.html`.
 - `appsscript.json`: The manifest file for the Apps Script project. It defines permissions (scopes), dependencies, and other project settings.
+- `.clasp.json`: Configuration file for the `clasp` command-line tool.
 - `README.md`: General setup and development guide for human developers.
 - `GEMINI.md`: This file. A detailed guide for AI assistants.
+- `.github/`: Directory for GitHub-related files, such as workflow configurations or issue templates.
 
 ## 3. Backend Logic (`Código.js`)
 
