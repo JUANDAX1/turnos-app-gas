@@ -34,6 +34,7 @@ const HOJA_CONFIG = "Configuracion";
 const HOJA_USUARIOS = "Usuarios";
 const HOJA_PROYECTOS = "Project_list";
 const HOJA_CONTABILIDAD = "contabilidad1";
+  const HOJA_BONIFICACIONES = "Bonificaciones";
 
 const ROLES = {
   ADMIN: "ADMINISTRADOR",
@@ -594,6 +595,16 @@ function inicializarSistema() {
     });
     hojaContabilidad.autoResizeColumns(1, hojaContabilidad.getLastColumn());
     
+    // --- Hoja Bonificaciones ---
+    let sheetBonificaciones = ss.getSheetByName(HOJA_BONIFICACIONES);
+    if (!sheetBonificaciones) {
+      sheetBonificaciones = ss.insertSheet(HOJA_BONIFICACIONES);
+      // Cabecera inicial: la primera columna será 'Proyecto'; las columnas de colaboradores se generarán dinámicamente al exportar
+      const headers = [["Proyecto"]];
+      sheetBonificaciones.getRange(1, 1, 1, 1).setValues(headers).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+      sheetBonificaciones.autoResizeColumns(1, 3);
+    }
+    
     return "Sistema inicializado correctamente. Todas las hojas han sido creadas y configuradas.";
   } catch (error) {
     console.error("Error en inicializarSistema:", error);
@@ -645,6 +656,158 @@ function consultarAsistencias(filtros) {
   } catch (e) {
     console.error("Error en consultarAsistencias:", e);
     return { error: e.message };
+  }
+}
+
+/**
+ * Calcula la matriz de bonificaciones (conteo de días asignados por proyecto x colaborador)
+ * @param {string} fechaDesde - 'yyyy-mm-dd'
+ * @param {string} fechaHasta - 'yyyy-mm-dd'
+ * @param {string} filtroBusqueda - texto opcional para filtrar colaboradores (id o nombre parcial)
+ * @returns {object} { proyectos: [...], colaboradores: [...], matriz: { proyecto: { colaboradorId: count } } }
+ */
+function obtenerBonificaciones(fechaDesde, fechaHasta, filtroBusqueda) {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheetAsistencia = ss.getSheetByName(HOJA_ASISTENCIA);
+    const sheetColaboradores = ss.getSheetByName(HOJA_COLABORADORES);
+
+    const colaboradoresData = sheetColaboradores.getDataRange().getValues().slice(1);
+    const asistenciaData = sheetAsistencia.getDataRange().getValues().slice(1);
+
+    // Crear mapa ID -> Nombre (trimmed)
+    const mapaColaboradores = {};
+    colaboradoresData.forEach(r => {
+      const id = (r[0] != null) ? r[0].toString().trim() : '';
+      const nombre = (r[1] != null) ? r[1].toString().trim() : '';
+      if (id) mapaColaboradores[id] = nombre;
+    });
+
+    const q = (filtroBusqueda || '').toString().trim().toLowerCase();
+
+    const desde = fechaDesde ? new Date(fechaDesde.replace(/-/g, '/')) : new Date('1970-01-01');
+    const hasta = fechaHasta ? new Date(fechaHasta.replace(/-/g, '/')) : new Date();
+    hasta.setHours(23,59,59,999);
+
+    const matriz = {};
+    const colaboradoresSet = {};
+
+    asistenciaData.forEach(row => {
+      try {
+        const rawId = row[1] != null ? row[1].toString().trim() : '';
+        if (!rawId) return;
+        // Aplicar filtro de colaborador si existe
+        if (q) {
+          const full = (rawId + ' ' + (mapaColaboradores[rawId] || '')).toLowerCase();
+          if (full.indexOf(q) === -1) return;
+        }
+
+        const fechaRegistro = row[2] ? new Date(row[2]) : null;
+        if (!fechaRegistro) return;
+        const fr = new Date(fechaRegistro.getFullYear(), fechaRegistro.getMonth(), fechaRegistro.getDate());
+        if (fr < new Date(desde.getFullYear(), desde.getMonth(), desde.getDate()) || fr > new Date(hasta.getFullYear(), hasta.getMonth(), hasta.getDate())) return;
+
+        const asignacion = row[4] != null ? row[4].toString().trim() : '';
+        if (!asignacion) return;
+
+        // Extraer nombre del proyecto: si contiene 'PROYECTO' intentar obtener la parte posterior, si no usar la asignacion tal cual
+        let proyectoNombre = '';
+        const up = asignacion.toUpperCase();
+        if (up.indexOf('PROYECTO') !== -1) {
+          // Buscar ':' y tomar lo que viene después, si no, quitar la palabra PROYECTO y posibles separadores
+          const idx = asignacion.indexOf(':');
+          if (idx !== -1) proyectoNombre = asignacion.substring(idx + 1).trim();
+          else proyectoNombre = asignacion.replace(/PROYECTO\s*-?\s*/i, '').trim();
+        } else {
+          proyectoNombre = asignacion;
+        }
+
+        if (!proyectoNombre) return;
+
+        // Normalizar claves
+        const projKey = proyectoNombre;
+        const colId = rawId;
+
+        if (!matriz[projKey]) matriz[projKey] = {};
+        matriz[projKey][colId] = (matriz[projKey][colId] || 0) + 1;
+        colaboradoresSet[colId] = true;
+      } catch (inner) {
+        // ignorar fila problemática
+      }
+    });
+
+    // Construir listas ordenadas
+    const proyectos = Object.keys(matriz).sort();
+    const colaboradores = Object.keys(colaboradoresSet).sort().map(id => ({ id: id, nombre: mapaColaboradores[id] || id }));
+
+    return { proyectos: proyectos, colaboradores: colaboradores, matriz: matriz };
+  } catch (e) {
+    console.error('Error en obtenerBonificaciones:', e);
+    return { error: e.message };
+  }
+}
+
+/**
+ * Escribe la matriz de bonificaciones en la hoja `Bonificaciones`.
+ * Filas = proyectos, Columnas = colaboradores (encabezado con 'Nombre (ID)').
+ * @param {string} fechaDesde - 'yyyy-mm-dd'
+ * @param {string} fechaHasta - 'yyyy-mm-dd'
+ * @param {string} filtroBusqueda - texto opcional para filtrar colaboradores
+ * @returns {string} Mensaje de resultado
+ */
+function guardarBonificacionesEnHoja(fechaDesde, fechaHasta, filtroBusqueda) {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheetBon = ss.getSheetByName(HOJA_BONIFICACIONES) || ss.insertSheet(HOJA_BONIFICACIONES);
+
+    const resultado = obtenerBonificaciones(fechaDesde, fechaHasta, filtroBusqueda);
+    if (!resultado || resultado.error) {
+      return `Error al calcular bonificaciones: ${resultado && resultado.error ? resultado.error : 'resultado vacío'}`;
+    }
+
+    const proyectos = resultado.proyectos || [];
+    const colaboradores = resultado.colaboradores || [];
+    const matriz = resultado.matriz || {};
+
+    // Limpiar hoja
+    sheetBon.clear();
+
+    // Construir cabecera
+    const header = ['Proyecto'];
+    colaboradores.forEach(c => {
+      header.push(`${c.nombre} (${c.id})`);
+    });
+
+    const rows = [];
+    rows.push(header);
+
+    // Para cada proyecto, construir fila con conteos en orden de colaboradores
+    proyectos.forEach(p => {
+      const fila = [p];
+      colaboradores.forEach(c => {
+        const v = (matriz[p] && matriz[p][c.id]) ? matriz[p][c.id] : 0;
+        fila.push(v);
+      });
+      rows.push(fila);
+    });
+
+    if (rows.length === 1) {
+      // No hay proyectos/colaboradores: dejar una nota
+      sheetBon.getRange(1,1).setValue('No hay datos para el periodo o filtros seleccionados.');
+      return 'Hoja Bonificaciones actualizada: no hay datos para mostrar.';
+    }
+
+    // Escribir matriz en la hoja empezando en A1
+    sheetBon.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
+
+    // Formato de cabecera
+    sheetBon.getRange(1, 1, 1, rows[0].length).setBackground('#2E86AB').setFontColor('white').setFontWeight('bold');
+    sheetBon.autoResizeColumns(1, rows[0].length);
+
+    return `Hoja Bonificaciones actualizada correctamente. Proyectos: ${proyectos.length}, Colaboradores: ${colaboradores.length}`;
+  } catch (e) {
+    console.error('Error en guardarBonificacionesEnHoja:', e);
+    return `Error al guardar bonificaciones: ${e.message}`;
   }
 }
 

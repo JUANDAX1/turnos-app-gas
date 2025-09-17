@@ -858,4 +858,94 @@ document.addEventListener('DOMContentLoaded', function() {
       setTimeout(cargarResumenSaldos, 200);
     });
   }
+  
+    // Agregar evento para la pestaña Bonificaciones
+    const tabBonificaciones = document.getElementById('nav-bonificaciones');
+    if (tabBonificaciones) {
+      tabBonificaciones.querySelector('a').addEventListener('click', function() {
+        setTimeout(() => {
+          // Establecer fechas por defecto
+          const today = new Date();
+          document.getElementById('bon-fecha-hasta').valueAsDate = today;
+          document.getElementById('bon-fecha-desde').valueAsDate = new Date(today.getFullYear(), today.getMonth(), 1);
+          cargarBonificaciones();
+        }, 100);
+      });
+    }
 });
+
+  function cargarBonificaciones(event) {
+    if (event) event.preventDefault();
+    const desde = document.getElementById('bon-fecha-desde').value;
+    const hasta = document.getElementById('bon-fecha-hasta').value;
+    const filtro = document.getElementById('bon-filtro').value;
+    const loading = document.getElementById('loadingBonificaciones');
+    const container = document.getElementById('tablaBonificaciones');
+    loading.style.display = 'block';
+    container.innerHTML = '';
+
+    google.script.run
+      .withSuccessHandler(data => {
+        loading.style.display = 'none';
+        if (!data || data.error) {
+          container.innerHTML = `<div class="message error">${data && data.error ? data.error : 'Error desconocido'}</div>`;
+          return;
+        }
+        renderBonificaciones(data);
+      })
+      .withFailureHandler(err => {
+        loading.style.display = 'none';
+        container.innerHTML = `<div class="message error">${err.message}</div>`;
+      })
+      .obtenerBonificaciones(desde, hasta, filtro);
+  }
+
+  function renderBonificaciones(data) {
+    const container = document.getElementById('tablaBonificaciones');
+    if (!data || !data.proyectos || !data.colaboradores) {
+      container.innerHTML = '<div class="message">No hay datos para mostrar.</div>';
+      return;
+    }
+
+    // Construir tabla HTML
+    const html = construirTablaBonificaciones(data.proyectos, data.colaboradores, data.matriz);
+    container.innerHTML = html;
+  }
+
+  function construirTablaBonificaciones(proyectos, colaboradores, matriz) {
+    // Cabecera con colaboradores
+    let table = '<table><thead><tr><th>Proyecto</th>';
+    colaboradores.forEach(col => { table += `<th>${col.nombre} <div style="font-size:0.8em; color:#666">(${col.id})</div></th>`; });
+    table += '</tr></thead><tbody>';
+
+    proyectos.forEach(p => {
+      table += `<tr><td><strong>${p}</strong></td>`;
+      colaboradores.forEach(col => {
+        const count = (matriz[p] && matriz[p][col.id]) ? matriz[p][col.id] : 0;
+        table += `<td style="text-align:center">${count}</td>`;
+      });
+      table += '</tr>';
+    });
+
+    table += '</tbody></table>';
+    return table;
+  }
+
+  function guardarBonificacionesHoja() {
+    const desde = document.getElementById('bon-fecha-desde').value;
+    const hasta = document.getElementById('bon-fecha-hasta').value;
+    const filtro = document.getElementById('bon-filtro').value;
+    const btn = event && event.target ? event.target : null;
+    if (btn) btn.disabled = true;
+    showMessage('tablaBonificaciones', 'Guardando en hoja...', 'info');
+    google.script.run
+      .withSuccessHandler(res => {
+        showMessage('tablaBonificaciones', res, res && res.toString().toLowerCase().indexOf('error') === -1 ? 'success' : 'error');
+        if (btn) btn.disabled = false;
+      })
+      .withFailureHandler(err => {
+        showMessage('tablaBonificaciones', `Error: ${err.message}`, 'error');
+        if (btn) btn.disabled = false;
+      })
+      .guardarBonificacionesEnHoja(desde, hasta, filtro);
+  }

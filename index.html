@@ -26,6 +26,7 @@
         <li class="nav-item" id="nav-consultas"><a class="nav-link" onclick="showTab('consultas', this)"><span class="nav-icon">🔍</span>Consultar Asistencia</a></li>
         <li class="nav-item" id="nav-proyectos"><a class="nav-link" onclick="showTab('proyectos', this)"><span class="nav-icon">🏗️</span>Registrar Proyectos</a></li>
         <li class="nav-item" id="nav-fondoscaja"><a class="nav-link" onclick="showTab('fondoscaja', this)"><span class="nav-icon">💰</span>Fondos de Caja</a></li>
+        <li class="nav-item" id="nav-bonificaciones"><a class="nav-link" onclick="showTab('bonificaciones', this)"><span class="nav-icon">🎁</span>Bonificaciones</a></li>
         <li class="nav-item" id="nav-configuracion"><a class="nav-link" onclick="showTab('configuracion', this)"><span class="nav-icon">⚙️</span>Configuración</a></li>
       </ul>
     </nav>
@@ -324,6 +325,45 @@
             <div class="card-body">
               <div id="loadingSaldos" class="loading">Cargando...</div>
               <div class="table-container" id="tablaSaldos"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="bonificaciones" class="tab-content">
+        <div class="content-header"><h2>Bonificaciones por Proyecto</h2></div>
+        <div class="content-body">
+          <div class="card">
+            <div class="card-header">Filtros</div>
+            <div class="card-body">
+              <form id="formBonificaciones" onsubmit="cargarBonificaciones(event)" class="form-grid">
+                <div class="form-group">
+                  <label for="bon-fecha-desde">Desde</label>
+                  <input type="date" id="bon-fecha-desde" required>
+                </div>
+                <div class="form-group">
+                  <label for="bon-fecha-hasta">Hasta</label>
+                  <input type="date" id="bon-fecha-hasta" required>
+                </div>
+                <div class="form-group">
+                  <label for="bon-filtro">Filtro inteligente</label>
+                  <input type="text" id="bon-filtro" placeholder="Buscar por ID o nombre...">
+                </div>
+                <div class="form-group" style="justify-content: flex-end;">
+                    <button type="submit" class="btn btn-primary">Cargar</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">Tabla de Bonificaciones</div>
+            <div class="card-body">
+              <div id="loadingBonificaciones" class="loading">Cargando...</div>
+                <div class="actions" style="margin-bottom:12px;">
+                  <button class="btn" onclick="guardarBonificacionesHoja()">Guardar en Hoja</button>
+                </div>
+                <div class="table-container" id="tablaBonificaciones"></div>
             </div>
           </div>
         </div>
