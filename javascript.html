@@ -1,4 +1,5 @@
 let USER_ROLE = null;
+let webAppUrl = null;
 
 document.addEventListener("DOMContentLoaded", function() {
   google.script.run
@@ -16,8 +17,18 @@ function handleLogin(user) {
     setupUIForRole();
     setDefaultDates();
     cargarListasDesplegables();
+    // Obtener la URL base de la app
+    google.script.run.withSuccessHandler(url => { webAppUrl = url; }).getWebAppUrl();
   } else {
     loadingScreen.innerHTML = `<div class="login-card"><h2>Acceso Denegado</h2><p>No tienes permiso para acceder a esta aplicación. Contacta al administrador.</p><p><i>Tu email: ${user.email}</i></p></div>`;
+  }
+}
+
+function openPonderarPage(){
+  if(webAppUrl){
+    window.open(webAppUrl + '?page=ponderar', '_blank');
+  } else {
+    alert("La URL de la aplicación aún no se ha cargado. Por favor, espere un momento y vuelva a intentarlo.");
   }
 }
 

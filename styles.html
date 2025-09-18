@@ -1,4 +1,4 @@
-    :root {
+:root {
       --primary-color: #2E86AB;
       --secondary-color: #5DADE2;
       --background-light: #E8F4F8;
@@ -117,4 +117,44 @@
       resize: vertical;
       min-height: 100px;
     }
-  
+
+/* Estilos para la tabla de ponderación */
+#tabla-ponderacion {
+  width: 100%;
+  border-collapse: collapse;
+}
+#tabla-ponderacion th, #tabla-ponderacion td {
+  border: 1px solid var(--border-color);
+  padding: 8px;
+  text-align: center;
+  vertical-align: middle;
+}
+#tabla-ponderacion th {
+  background-color: #F0F8FC;
+  white-space: nowrap;
+  position: sticky;
+  top: 0; /* Para que la cabecera se quede fija al hacer scroll vertical */
+}
+#tabla-ponderacion td:first-child {
+  text-align: left;
+  font-weight: bold;
+  background-color: #F8FBFD;
+  position: sticky;
+  left: 0; /* Para que la columna de proyectos se quede fija al hacer scroll horizontal */
+  z-index: 1;
+}
+#tabla-ponderacion th:first-child {
+    z-index: 2;
+}
+
+.ponderacion-input {
+  width: 80px;
+  text-align: center;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+.ponderacion-input:focus {
+  border-color: var(--secondary-color);
+  outline: none;
+}

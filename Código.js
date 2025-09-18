@@ -34,7 +34,8 @@ const HOJA_CONFIG = "Configuracion";
 const HOJA_USUARIOS = "Usuarios";
 const HOJA_PROYECTOS = "Project_list";
 const HOJA_CONTABILIDAD = "contabilidad1";
-  const HOJA_BONIFICACIONES = "Bonificaciones";
+const HOJA_BONIFICACIONES = "Bonificaciones";
+const HOJA_PONDERACION = "ponderacion";
 
 const ROLES = {
   ADMIN: "ADMINISTRADOR",
@@ -46,12 +47,23 @@ const ROLES = {
 // SERVIDOR WEB Y AUTENTICACIÓN
 // ===============================================================
 
-function doGet() {
-  // Crea una plantilla a partir de index.html y la evalúa para procesar las etiquetas <?!= ... ?>
+function doGet(e) {
+  if (e.parameter.page === 'ponderar') {
+    return HtmlService.createTemplateFromFile('ponderar.html')
+      .evaluate()
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+      .setTitle("Ponderación de Bonos");
+  }
+  
+  // Sirve la página principal por defecto
   return HtmlService.createTemplateFromFile('index.html')
       .evaluate()
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
       .setTitle("Sistema de Gestión de Nómina");
+}
+
+function getWebAppUrl(){
+  return ScriptApp.getService().getUrl();
 }
 
 /**
@@ -1457,3 +1469,99 @@ function enviarCorreoConAdjunto(emailTo, subject, body, filePdfId) {
 }
 
 // ==============================================================================
+// GESTIÓN DE PONDERACIÓN DE BONOS
+// ==============================================================================
+
+/**
+ * Obtiene listas únicas de proyectos y colaboradores activos para la tabla de ponderación.
+ * @returns {object} Un objeto con { proyectos: [...], trabajadores: [...] }.
+ */
+function obtenerDatosParaPonderacion() {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheetAsistencia = ss.getSheetByName(HOJA_ASISTENCIA);
+    const sheetColaboradores = ss.getSheetByName(HOJA_COLABORADORES);
+
+    // 1. Obtener colaboradores activos
+    const colaboradoresData = sheetColaboradores.getDataRange().getValues().slice(1);
+    const trabajadores = colaboradoresData.filter(row => row[6] === 'Activo').map(row => row[1]); // Columna B: NombreCompleto
+
+    // 2. Obtener proyectos desde registros de asistencia
+    const asignaciones = sheetAsistencia.getRange("E2:E").getValues().flat().filter(String);
+    const proyectosSet = new Set();
+    asignaciones.forEach(asignacion => {
+      let proyectoNombre = '';
+      const up = asignacion.toUpperCase();
+      if (up.startsWith('PROYECTO')) {
+        const idx = asignacion.indexOf(':');
+        if (idx !== -1) {
+          proyectoNombre = asignacion.substring(idx + 1).trim();
+        } else {
+          proyectoNombre = asignacion.replace(/PROYECTO\s*-?\s*/i, '').trim();
+        }
+        if (proyectoNombre) {
+          proyectosSet.add(proyectoNombre);
+        }
+      }
+    });
+
+    const proyectos = Array.from(proyectosSet).sort();
+
+    return { proyectos, trabajadores: trabajadores.sort() };
+  } catch (e) {
+    console.error("Error en obtenerDatosParaPonderacion:", e);
+    return { error: e.message };
+  }
+}
+
+
+/**
+ * Guarda los pesos de ponderación en la hoja 'ponderacion'.
+ * @param {object} data - Objeto con la estructura { proyecto: { trabajador: peso, ... } }.
+ * @returns {string} Mensaje de resultado.
+ */
+function guardarPonderacion(data) {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    let sheet = ss.getSheetByName(HOJA_PONDERACION);
+    if (!sheet) {
+      sheet = ss.insertSheet(HOJA_PONDERACION);
+    }
+    sheet.clear();
+
+    const proyectos = Object.keys(data);
+    if (proyectos.length === 0) {
+      return "No se recibieron datos para guardar.";
+    }
+
+    // Obtener todos los trabajadores de la data para la cabecera
+    const trabajadoresSet = new Set();
+    proyectos.forEach(p => {
+      Object.keys(data[p]).forEach(t => trabajadoresSet.add(t));
+    });
+    const trabajadores = Array.from(trabajadoresSet).sort();
+
+    // Construir cabecera y filas
+    const header = ['Proyecto', ...trabajadores];
+    const rows = [header];
+
+    proyectos.forEach(proyecto => {
+      const row = [proyecto];
+      trabajadores.forEach(trabajador => {
+        const peso = data[proyecto][trabajador] || 0;
+        row.push(peso);
+      });
+      rows.push(row);
+    });
+
+    // Escribir en la hoja
+    sheet.getRange(1, 1, rows.length, header.length).setValues(rows);
+    sheet.getRange(1, 1, 1, header.length).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+    sheet.autoResizeColumns(1, header.length);
+
+    return "Pesos de ponderación guardados correctamente.";
+  } catch (e) {
+    console.error("Error en guardarPonderacion:", e);
+    return `Error al guardar: ${e.message}`;
+  }
+}

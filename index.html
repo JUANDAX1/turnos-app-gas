@@ -27,6 +27,7 @@
         <li class="nav-item" id="nav-proyectos"><a class="nav-link" onclick="showTab('proyectos', this)"><span class="nav-icon">🏗️</span>Registrar Proyectos</a></li>
         <li class="nav-item" id="nav-fondoscaja"><a class="nav-link" onclick="showTab('fondoscaja', this)"><span class="nav-icon">💰</span>Fondos de Caja</a></li>
         <li class="nav-item" id="nav-bonificaciones"><a class="nav-link" onclick="showTab('bonificaciones', this)"><span class="nav-icon">🎁</span>Bonificaciones</a></li>
+        <li class="nav-item"><a class="nav-link" href="#" onclick="openPonderarPage()"><span class="nav-icon">⚖️</span>Ponderar Bonos</a></li>
         <li class="nav-item" id="nav-configuracion"><a class="nav-link" onclick="showTab('configuracion', this)"><span class="nav-icon">⚙️</span>Configuración</a></li>
       </ul>
     </nav>
@@ -364,6 +365,23 @@
                   <button class="btn" onclick="guardarBonificacionesHoja()">Guardar en Hoja</button>
                 </div>
                 <div class="table-container" id="tablaBonificaciones"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="ponderarBonos" class="tab-content">
+        <div class="content-header"><h2>Ponderación de Bonos por Proyecto</h2></div>
+        <div class="content-body">
+          <div class="card">
+            <div class="card-header">Tabla de Ponderación (%)</div>
+            <div class="card-body">
+              <div class="actions" style="margin-bottom: 20px;">
+                <button class="btn btn-success" onclick="guardarPesosPonderacion(event)">Guardar Pesos</button>
+              </div>
+              <div id="loadingPonderacion" class="loading">Cargando...</div>
+              <div class="table-container" id="tablaPonderacionContainer"></div>
+              <div id="msgPonderacion"></div>
             </div>
           </div>
         </div>
