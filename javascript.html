@@ -1,4 +1,5 @@
 let USER_ROLE = null;
+let webAppUrl = null;
 
 document.addEventListener("DOMContentLoaded", function() {
   google.script.run
@@ -16,8 +17,18 @@ function handleLogin(user) {
     setupUIForRole();
     setDefaultDates();
     cargarListasDesplegables();
+    // Obtener la URL base de la app
+    google.script.run.withSuccessHandler(url => { webAppUrl = url; }).getWebAppUrl();
   } else {
     loadingScreen.innerHTML = `<div class="login-card"><h2>Acceso Denegado</h2><p>No tienes permiso para acceder a esta aplicación. Contacta al administrador.</p><p><i>Tu email: ${user.email}</i></p></div>`;
+  }
+}
+
+function openPonderarPage(){
+  if(webAppUrl){
+    window.open(webAppUrl + '?page=ponderar', '_blank');
+  } else {
+    alert("La URL de la aplicación aún no se ha cargado. Por favor, espere un momento y vuelva a intentarlo.");
   }
 }
 
@@ -32,6 +43,7 @@ function setupUIForRole() {
   const navConsultas = document.getElementById('nav-consultas');
   const navConfig = document.getElementById('nav-configuracion');
   const navDashboard = document.getElementById('nav-dashboard');
+  const navFondosCaja = document.getElementById('nav-fondoscaja');
 
   if (USER_ROLE === 'ASISTENTE') {
     navColaboradores.style.display = 'none';
@@ -64,6 +76,9 @@ function showTab(tabName, clickedLink) {
 
   if (tabName === 'asistencia') {
     cargarVistaAsistencia();
+  } else if (tabName === 'fondoscaja') {
+    cargarListasFondosCaja();
+    cargarResumenSaldos();
   }
 }
 
@@ -87,6 +102,7 @@ function cargarListasDesplegables() {
 function populateDropdowns(listas) {
   const selectColaboradorConsulta = document.getElementById('consulta-colaborador');
   const selectEstadoEdicion = document.getElementById('edit-estado');
+  const selectAsignacionEdicion = document.getElementById('edit-asignacion');
 
   let colaboradoresOptions = '<option value="TODOS">Todos los colaboradores</option>';
   listas.colaboradores.forEach(col => {
@@ -99,6 +115,16 @@ function populateDropdowns(listas) {
     estadosOptions += `<option value="${estado}">${estado}</option>`;
   });
   selectEstadoEdicion.innerHTML = estadosOptions;
+
+  let asignacionesOptions = '<option value="">Seleccione una asignación...</option>';
+  if (listas.asignaciones) {
+    listas.asignaciones.forEach(asignacion => {
+      asignacionesOptions += `<option value="${asignacion}">${asignacion}</option>`;
+    });
+  }
+  if(selectAsignacionEdicion) {
+    selectAsignacionEdicion.innerHTML = asignacionesOptions;
+  }
 }
 
 function registrarColaborador(event) {
@@ -244,21 +270,21 @@ function consultarAsistencias(event) {
             return;
         }
 
-        let table = `<table><thead><tr><th>Fecha</th><th>Nombre</th><th>Estado</th><th>Observaciones</th><th>Acción</th></tr></thead><tbody>`;
+        let table = `<table><thead><tr><th>Fecha</th><th>Nombre</th><th>Estado</th><th>Asignación</th><th>Observaciones</th><th>Acción</th></tr></thead><tbody>`;
         resultados.forEach(res => {
-            const obsEscapadas = res.observaciones.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            const obsEscapadas = (res.observaciones || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            const asignacionEscapada = (res.asignacion || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
             table += `
               <tr>
-                <td>${res.fecha}</td>
-                <td>${res.nombreColaborador}</td>
-                <td>${res.estado}</td>
-                <td>${res.observaciones}</td>
-                <td>
-                  <button class="btn btn-secondary" onclick="abrirModalEdicion(${res.idRegistro}, '${res.estado}', '${obsEscapadas}')">
-                    Editar
-                  </button>
-                </td>
-              </tr>
+                  <td>${res.fecha}</td>
+                  <td>${res.nombreColaborador}</td>
+                  <td>${res.estado}</td>
+                  <td>${res.asignacion || ''}</td>
+                  <td>${res.observaciones}</td>
+                  <td>
+                    <button class="btn btn-secondary" data-id="${res.idRegistro}" data-estado="${res.estado}" data-asignacion="${asignacionEscapada}" data-obs="${obsEscapadas}" onclick="abrirModalEdicionFromButton(this)">Editar</button>
+                  </td>
+                </tr>
             `;
         });
         table += '</tbody></table>';
@@ -267,11 +293,20 @@ function consultarAsistencias(event) {
     .consultarAsistencias(filtros);
 }
 
-function abrirModalEdicion(idRegistro, estadoActual, obsActual) {
+function abrirModalEdicion(idRegistro, estadoActual, asignacionActual, obsActual) {
   document.getElementById('edit-idRegistro').value = idRegistro;
   document.getElementById('edit-estado').value = estadoActual;
+  document.getElementById('edit-asignacion').value = asignacionActual;
   document.getElementById('edit-observaciones').value = obsActual;
   document.getElementById('modal-edicion').style.display = 'flex';
+}
+
+function abrirModalEdicionFromButton(btn) {
+  const id = btn.getAttribute('data-id');
+  const estado = btn.getAttribute('data-estado');
+  const asignacion = btn.getAttribute('data-asignacion');
+  const obs = btn.getAttribute('data-obs');
+  abrirModalEdicion(id, estado, asignacion, obs);
 }
 
 function cerrarModalEdicion() {
@@ -284,6 +319,7 @@ function guardarCambiosAsistencia(event) {
   const datos = {
     idRegistro: document.getElementById('edit-idRegistro').value,
     nuevoEstado: document.getElementById('edit-estado').value,
+    nuevaAsignacion: document.getElementById('edit-asignacion').value,
     nuevasObservaciones: document.getElementById('edit-observaciones').value
   };
 
@@ -332,17 +368,19 @@ function displayAsistenciaGrid(datos) {
   const estadosOptions = datos.estados.map(e => `<option value="${e}">${e}</option>`).join('');
   const asignacionesOptions = datos.asignaciones.map(a => `<option value="${a}">${a}</option>`).join('');
   const vehiculosOptions = datos.vehiculos.map(v => `<option value="${v}">${v}</option>`).join('');
+  const proyectosOptions = datos.proyectos.map(p => `<option value="${p}">${p}</option>`).join('');
 
   const colaboradoresSinRegistro = [...datos.colaboradores];
 
   datos.registrosHoy.forEach(reg => {
     const colaborador = datos.colaboradores.find(c => c.id == reg.colaboradorId);
-    if (colaborador) {
+      if (colaborador) {
+      const isoNow = new Date().toISOString();
       resultsHtml += `
         <tr>
           <td>${colaborador.nombre}</td>
           <td>${reg.estado}</td>
-          <td><button class="btn btn-secondary" onclick="solicitarEliminarRegistro(${reg.idRegistro}, '${new Date().toISOString()}')">Editar</button></td>
+          <td><button class="btn btn-secondary" data-id="${reg.idRegistro}" data-fecha="${isoNow}" onclick="solicitarEliminarRegistroFromButton(this)">Editar</button></td>
         </tr>`;
       const index = colaboradoresSinRegistro.findIndex(c => c.id == reg.colaboradorId);
       if (index > -1) colaboradoresSinRegistro.splice(index, 1);
@@ -360,9 +398,13 @@ function displayAsistenciaGrid(datos) {
           </select>
         </td>
         <td>
-          <select class="asistencia-asignacion">
+          <select class="asistencia-asignacion" onchange="toggleProyectoSelect(this)">
             <option value="">Seleccionar...</option>
             ${asignacionesOptions}
+          </select>
+          <select class="asistencia-proyecto" style="display: none; margin-top: 5px;">
+            <option value="">Seleccionar Proyecto...</option>
+            ${proyectosOptions}
           </select>
         </td>
         <td>
@@ -387,6 +429,12 @@ function displayAsistenciaGrid(datos) {
   resultsTable.innerHTML = resultsHtml;
 }
 
+function toggleProyectoSelect(selectElement) {
+  const row = selectElement.closest('tr');
+  const proyectoSelect = row.querySelector('.asistencia-proyecto');
+  proyectoSelect.style.display = selectElement.value === 'PROYECTO' ? 'block' : 'none';
+}
+
 function guardarAsistencias() {
   const fechaSeleccionada = document.getElementById('fecha-asistencia').value;
   const selects = document.querySelectorAll('.asistencia-estado');
@@ -395,10 +443,16 @@ function guardarAsistencias() {
   selects.forEach(select => {
     if (select.value) {
       const row = select.closest('tr');
+      const asignacionSelect = row.querySelector('.asistencia-asignacion');
+      const proyectoSelect = row.querySelector('.asistencia-proyecto');
+      let asignacion = asignacionSelect.value;
+      if (asignacion === 'PROYECTO' && proyectoSelect.value) {
+        asignacion = `PROYECTO: ${proyectoSelect.value}`;
+      }
       asistenciasParaGuardar.push({
         colaboradorId: select.dataset.employeeId,
         estado: select.value,
-        asignacion: row.querySelector('.asistencia-asignacion').value,
+        asignacion: asignacion,
         vehiculo: row.querySelector('.asistencia-vehiculo').value,
         horas: row.querySelector('.asistencia-horas').value,
         observaciones: row.querySelector('.asistencia-obs').value
@@ -423,6 +477,22 @@ function guardarAsistencias() {
 function solicitarEliminarRegistro(idRegistro, fechaRegistro) {
   if (confirm('¿Está seguro de que desea editar este registro? Se eliminará para que pueda volver a ingresarlo.')) {
     const info = { idRegistro, fechaRegistro };
+    google.script.run
+      .withSuccessHandler(response => {
+        alert(response);
+        if (!response.includes('Error')) {
+          cargarVistaAsistencia();
+        }
+      })
+      .eliminarRegistroAsistencia(info);
+  }
+}
+
+function solicitarEliminarRegistroFromButton(btn) {
+  const id = btn.getAttribute('data-id');
+  const fecha = btn.getAttribute('data-fecha');
+  if (confirm('¿Está seguro de que desea editar este registro? Se eliminará para que pueda volver a ingresarlo.')) {
+    const info = { idRegistro: id, fechaRegistro: fecha };
     google.script.run
       .withSuccessHandler(response => {
         alert(response);
@@ -462,6 +532,19 @@ function registrarProyecto(event) {
     })
     .withFailureHandler(error => showMessage('msgProyecto', `Error: ${error.message}`, 'error'))
     .registrarProyecto(proyecto);
+}
+
+function cancelarEdicion() {
+  document.getElementById('formProyecto').reset();
+  document.getElementById('registration_date').valueAsDate = new Date();
+  document.getElementById('project_code').readOnly = false;
+  document.getElementById('btnSubmitProject').textContent = 'Registrar Proyecto';
+  document.getElementById('btnCancelEdit').style.display = 'none';
+  document.querySelector('#formProyecto').onsubmit = function(e) {
+    e.preventDefault();
+    registrarProyecto(e);
+  };
+  showMessage('msgProyecto', '', 'info');
 }
 
 function cargarProyectos() {
@@ -505,8 +588,10 @@ function cargarProyectos() {
             <td>${proyecto.project_contact}</td>
             <td>${proyecto.project_observation}</td>
             <td>
-              <button class="btn btn-secondary" onclick="editarProyecto('${proyecto.project_code}')">Editar</button>
-              <button class="btn btn-danger" onclick="eliminarProyecto('${proyecto.project_code}')">Eliminar</button>
+              <div class="actions">
+                <button class="btn btn-secondary" onclick="editarProyecto('${proyecto.project_code}')">Editar</button>
+                <button class="btn btn-danger" onclick="eliminarProyecto('${proyecto.project_code}')">Eliminar</button>
+              </div>
             </td>
           </tr>
         `;
@@ -522,7 +607,8 @@ function cargarProyectos() {
 }
 
 function editarProyecto(projectCode) {
-  const tableRow = document.querySelector(`tr:has(td:first-child:contains('${projectCode}'))`);
+  const rows = document.querySelectorAll('#tablaProyectos table tbody tr');
+  const tableRow = Array.from(rows).find(row => row.cells[0].textContent === projectCode);
   if (!tableRow) return;
 
   const cells = tableRow.cells;
@@ -535,7 +621,8 @@ function editarProyecto(projectCode) {
   document.getElementById('project_observation').value = cells[6].textContent;
 
   document.getElementById('project_code').readOnly = true;
-  document.querySelector('#formProyecto button[type="submit"]').textContent = 'Actualizar Proyecto';
+  document.getElementById('btnSubmitProject').textContent = 'Actualizar Proyecto';
+  document.getElementById('btnCancelEdit').style.display = 'block';
   document.querySelector('#formProyecto').onsubmit = function(e) {
     e.preventDefault();
     actualizarProyecto();
@@ -601,6 +688,171 @@ function buscarProyectos(searchTerm) {
 }
 
 // Cargar proyectos cuando se muestra la pestaña
+// ===============================================================
+// FUNCIONES PARA FONDOS DE CAJA
+// ===============================================================
+
+function cargarListasFondosCaja() {
+  // Cargar tipos de registro
+  google.script.run
+    .withSuccessHandler(function(tipos) {
+      const selectTipoRegistro = document.getElementById('tipo_registro_caja');
+      let tiposOptions = '<option value="">Seleccione un tipo...</option>';
+      tipos.forEach(tipo => {
+        tiposOptions += `<option value="${tipo}">${tipo}</option>`;
+      });
+      selectTipoRegistro.innerHTML = tiposOptions;
+    })
+    .withFailureHandler(function(error) {
+      showMessage('msgFondosCaja', `Error al cargar tipos de registro: ${error}`, 'error');
+    })
+    .obtenerTiposRegistro();
+
+  // Cargar colaboradores
+  google.script.run
+    .withSuccessHandler(function(colaboradores) {
+      const selectColaborador = document.getElementById('colaborador_caja');
+      let colaboradoresOptions = '<option value="">Seleccione un colaborador...</option>';
+      colaboradores.forEach(col => {
+        colaboradoresOptions += `<option value="${col.id}">${col.nombre}</option>`;
+      });
+      selectColaborador.innerHTML = colaboradoresOptions;
+    })
+    .withFailureHandler(function(error) {
+      showMessage('msgFondosCaja', `Error al cargar colaboradores: ${error}`, 'error');
+    })
+    .obtenerColaboradores();
+}
+
+function toggleMontoInputs() {
+  const tipoMovimiento = document.getElementById('tipo_movimiento').value;
+  const montoInput = document.getElementById('monto_caja');
+  montoInput.placeholder = tipoMovimiento === 'entrada' ? 'Ingrese el monto a recibir' : 'Ingrese el monto a entregar';
+}
+
+function registrarMovimientoCaja(event) {
+  event.preventDefault();
+  
+  const movimiento = {
+    idColaborador: document.getElementById('colaborador_caja').value,
+    tipoRegistro: document.getElementById('tipo_registro_caja').value,
+    tipoMovimiento: document.getElementById('tipo_movimiento').value,
+    monto: parseFloat(document.getElementById('monto_caja').value),
+    detalle: document.getElementById('detalle_caja').value
+  };
+
+  showMessage('msgFondosCaja', 'Registrando movimiento...', 'info');
+  
+  google.script.run
+    .withSuccessHandler(function(response) {
+      const container = document.getElementById('msgFondosCaja');
+      container.innerHTML = '';
+      if (response && typeof response === 'object') {
+        if (!response.success) {
+          showMessage('msgFondosCaja', response.message || 'Error desconocido', 'error');
+          return;
+        }
+
+        // Mostrar mensaje y botones si existen URLs
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'message ' + (response.success ? 'success' : 'error');
+        msgDiv.textContent = response.message || '';
+        container.appendChild(msgDiv);
+
+        if (response.valeUrl) {
+          const link = document.createElement('a');
+          link.href = response.valeUrl;
+          link.target = '_blank';
+          link.textContent = 'Abrir Vale (Doc)';
+          link.style.marginLeft = '8px';
+          container.appendChild(link);
+
+          const btnAbrir = document.createElement('button');
+          btnAbrir.className = 'btn';
+          btnAbrir.textContent = 'Abrir Doc';
+          btnAbrir.onclick = function() { window.open(response.valeUrl, '_blank'); };
+          btnAbrir.style.marginLeft = '8px';
+          container.appendChild(btnAbrir);
+        }
+
+        if (response.pdfUrl) {
+          const linkPdf = document.createElement('a');
+          linkPdf.href = response.pdfUrl;
+          linkPdf.target = '_blank';
+          linkPdf.textContent = 'Abrir Vale (PDF)';
+          linkPdf.style.marginLeft = '8px';
+          container.appendChild(linkPdf);
+
+          const btnPdf = document.createElement('button');
+          btnPdf.className = 'btn';
+          btnPdf.textContent = 'Abrir PDF';
+          btnPdf.onclick = function() { window.open(response.pdfUrl, '_blank'); };
+          btnPdf.style.marginLeft = '8px';
+          container.appendChild(btnPdf);
+        }
+      } else {
+        showMessage('msgFondosCaja', response, 'success');
+      }
+      document.getElementById('formFondosCaja').reset();
+      cargarResumenSaldos();
+    })
+    .withFailureHandler(function(error) {
+      showMessage('msgFondosCaja', `Error: ${error}`, 'error');
+    })
+    .registrarMovimientoCaja(movimiento);
+}
+
+function imprimirVale(url) {
+  // Abre el documento en una nueva pestaña; el usuario puede usar la función de impresión del navegador.
+  window.open(url, '_blank');
+}
+
+function cargarResumenSaldos() {
+  const loading = document.getElementById('loadingSaldos');
+  const container = document.getElementById('tablaSaldos');
+  
+  loading.style.display = 'block';
+  
+  google.script.run
+    .withSuccessHandler(function(saldos) {
+      if (!saldos || saldos.length === 0) {
+        container.innerHTML = '<div class="message info">No hay saldos positivos para mostrar.</div>';
+      } else {
+        let html = `
+          <table>
+            <thead>
+              <tr>
+                <th>Colaborador</th>
+                <th>Tipo de Registro</th>
+                <th>Saldo ($)</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+        
+        saldos.forEach(item => {
+          html += `
+            <tr>
+              <td>${item.nombre}</td>
+              <td>${item.tipoRegistro}</td>
+              <td style="text-align: right">${formatearMoneda(item.saldo)}</td>
+            </tr>
+          `;
+        });
+        
+        html += '</tbody></table>';
+        container.innerHTML = html;
+      }
+      loading.style.display = 'none';
+    })
+    .withFailureHandler(function(error) {
+      showMessage('msgFondosCaja', `Error al cargar saldos: ${error}`, 'error');
+      loading.style.display = 'none';
+    })
+    .obtenerResumenSaldos();
+}
+
+// Evento de inicialización
 document.addEventListener('DOMContentLoaded', function() {
   const tabProyectos = document.getElementById('nav-proyectos');
   if (tabProyectos) {
@@ -608,4 +860,103 @@ document.addEventListener('DOMContentLoaded', function() {
       setTimeout(cargarProyectos, 100);
     });
   }
+
+  // Agregar evento para cargar fondos de caja
+  const tabFondosCaja = document.getElementById('nav-fondoscaja');
+  if (tabFondosCaja) {
+    tabFondosCaja.querySelector('a').addEventListener('click', function() {
+      setTimeout(cargarListasFondosCaja, 100);
+      setTimeout(cargarResumenSaldos, 200);
+    });
+  }
+  
+    // Agregar evento para la pestaña Bonificaciones
+    const tabBonificaciones = document.getElementById('nav-bonificaciones');
+    if (tabBonificaciones) {
+      tabBonificaciones.querySelector('a').addEventListener('click', function() {
+        setTimeout(() => {
+          // Establecer fechas por defecto
+          const today = new Date();
+          document.getElementById('bon-fecha-hasta').valueAsDate = today;
+          document.getElementById('bon-fecha-desde').valueAsDate = new Date(today.getFullYear(), today.getMonth(), 1);
+          cargarBonificaciones();
+        }, 100);
+      });
+    }
 });
+
+  function cargarBonificaciones(event) {
+    if (event) event.preventDefault();
+    const desde = document.getElementById('bon-fecha-desde').value;
+    const hasta = document.getElementById('bon-fecha-hasta').value;
+    const filtro = document.getElementById('bon-filtro').value;
+    const loading = document.getElementById('loadingBonificaciones');
+    const container = document.getElementById('tablaBonificaciones');
+    loading.style.display = 'block';
+    container.innerHTML = '';
+
+    google.script.run
+      .withSuccessHandler(data => {
+        loading.style.display = 'none';
+        if (!data || data.error) {
+          container.innerHTML = `<div class="message error">${data && data.error ? data.error : 'Error desconocido'}</div>`;
+          return;
+        }
+        renderBonificaciones(data);
+      })
+      .withFailureHandler(err => {
+        loading.style.display = 'none';
+        container.innerHTML = `<div class="message error">${err.message}</div>`;
+      })
+      .obtenerBonificaciones(desde, hasta, filtro);
+  }
+
+  function renderBonificaciones(data) {
+    const container = document.getElementById('tablaBonificaciones');
+    if (!data || !data.proyectos || !data.colaboradores) {
+      container.innerHTML = '<div class="message">No hay datos para mostrar.</div>';
+      return;
+    }
+
+    // Construir tabla HTML
+    const html = construirTablaBonificaciones(data.proyectos, data.colaboradores, data.matriz);
+    container.innerHTML = html;
+  }
+
+  function construirTablaBonificaciones(proyectos, colaboradores, matriz) {
+    // Cabecera con colaboradores
+    let table = '<table><thead><tr><th>Proyecto</th>';
+    colaboradores.forEach(col => { table += `<th>${col.nombre} <div style="font-size:0.8em; color:#666">(${col.id})</div></th>`; });
+    table += '</tr></thead><tbody>';
+
+    proyectos.forEach(p => {
+      table += `<tr><td><strong>${p}</strong></td>`;
+      colaboradores.forEach(col => {
+        const count = (matriz[p] && matriz[p][col.id]) ? matriz[p][col.id] : 0;
+        table += `<td style="text-align:center">${count}</td>`;
+      });
+      table += '</tr>';
+    });
+
+    table += '</tbody></table>';
+    return table;
+  }
+
+  function guardarBonificacionesHoja() {
+    const desde = document.getElementById('bon-fecha-desde').value;
+    const hasta = document.getElementById('bon-fecha-hasta').value;
+    const filtro = document.getElementById('bon-filtro').value;
+    const btn = event && event.target ? event.target : null;
+    if (btn) btn.disabled = true;
+    showMessage('tablaBonificaciones', 'Guardando en hoja...', 'info');
+    google.script.run
+      .withSuccessHandler(res => {
+        showMessage('tablaBonificaciones', res, res && res.toString().toLowerCase().indexOf('error') === -1 ? 'success' : 'error');
+        if (btn) btn.disabled = false;
+      })
+      .withFailureHandler(err => {
+        showMessage('tablaBonificaciones', `Error: ${err.message}`, 'error');
+        if (btn) btn.disabled = false;
+      })
+      .guardarBonificacionesEnHoja(desde, hasta, filtro);
+  }

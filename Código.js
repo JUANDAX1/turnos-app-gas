@@ -33,6 +33,9 @@ const HOJA_ASISTENCIA = "RegistrosAsistencia";
 const HOJA_CONFIG = "Configuracion";
 const HOJA_USUARIOS = "Usuarios";
 const HOJA_PROYECTOS = "Project_list";
+const HOJA_CONTABILIDAD = "contabilidad1";
+const HOJA_BONIFICACIONES = "Bonificaciones";
+const HOJA_PONDERACION = "ponderacion";
 
 const ROLES = {
   ADMIN: "ADMINISTRADOR",
@@ -44,12 +47,23 @@ const ROLES = {
 // SERVIDOR WEB Y AUTENTICACIÓN
 // ===============================================================
 
-function doGet() {
-  // Crea una plantilla a partir de index.html y la evalúa para procesar las etiquetas <?!= ... ?>
+function doGet(e) {
+  if (e.parameter.page === 'ponderar') {
+    return HtmlService.createTemplateFromFile('ponderar.html')
+      .evaluate()
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+      .setTitle("Ponderación de Bonos");
+  }
+  
+  // Sirve la página principal por defecto
   return HtmlService.createTemplateFromFile('index.html')
       .evaluate()
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
       .setTitle("Sistema de Gestión de Nómina");
+}
+
+function getWebAppUrl(){
+  return ScriptApp.getService().getUrl();
 }
 
 /**
@@ -183,15 +197,20 @@ function obtenerListasParaAsistencia() {
 
     // Obtener estados de asistencia desde la configuración
     const estadosData = sheetConfig.getRange("C2:C").getValues();
-    const estados = estadosData.flat().filter(String); // .flat() convierte array de arrays en uno solo y filter(String) elimina vacíos
+    const estados = estadosData.flat().filter(String);
+
+    // Obtener asignaciones desde la configuración
+    const asignacionesData = sheetConfig.getRange("G2:G").getValues();
+    const asignaciones = asignacionesData.flat().filter(String);
 
     return {
       colaboradores: colaboradoresActivos,
-      estados: estados
+      estados: estados,
+      asignaciones: ['PROYECTO', ...asignaciones]
     };
   } catch (error) {
     console.error("Error en obtenerListasParaAsistencia:", error);
-    return { colaboradores: [], estados: [] };
+    return { colaboradores: [], estados: [], asignaciones: [] };
   }
 }
 
@@ -205,6 +224,7 @@ function obtenerDatosParaAsistenciaGrid(fechaSeleccionada) {
     const sheetColaboradores = ss.getSheetByName(HOJA_COLABORADORES);
     const sheetConfig = ss.getSheetByName(HOJA_CONFIG);
     const sheetAsistencia = ss.getSheetByName(HOJA_ASISTENCIA);
+    const sheetProyectos = ss.getSheetByName(HOJA_PROYECTOS);
 
     // 1. Obtener colaboradores activos
     const colaboradoresData = sheetColaboradores.getDataRange().getValues();
@@ -216,6 +236,9 @@ function obtenerDatosParaAsistenciaGrid(fechaSeleccionada) {
     const estados = sheetConfig.getRange("C2:C").getValues().flat().filter(String);
     const asignaciones = sheetConfig.getRange("G2:G").getValues().flat().filter(String);
     const vehiculos = sheetConfig.getRange("K2:K").getValues().flat().filter(String);
+
+    // Obtener lista de proyectos
+    const proyectos = sheetProyectos ? sheetProyectos.getRange("B2:B").getValues().flat().filter(String) : [];
 
     // 3. Obtener registros de la fecha seleccionada
     const fecha = fechaSeleccionada ? new Date(fechaSeleccionada.replace(/-/g, '\/') + ' 00:00:00') : new Date();
@@ -234,8 +257,9 @@ function obtenerDatosParaAsistenciaGrid(fechaSeleccionada) {
     return {
       colaboradores: colaboradoresActivos,
       estados: estados,
-      asignaciones: asignaciones,
+      asignaciones: ['PROYECTO', ...asignaciones],
       vehiculos: vehiculos,
+      proyectos: proyectos,
       registrosHoy: registrosDelDia
     };
   } catch (error) {
@@ -543,6 +567,55 @@ function inicializarSistema() {
       sheetProyectos.getRange("H:H").setNumberFormat("dd/mm/yyyy hh:mm:ss");
       sheetProyectos.autoResizeColumns(1, 8);
     }
+
+    // --- Hoja Contabilidad ---
+    let hojaContabilidad = ss.getSheetByName(HOJA_CONTABILIDAD);
+    if (!hojaContabilidad) {
+      hojaContabilidad = ss.insertSheet(HOJA_CONTABILIDAD);
+      const encabezadosContabilidad = [
+        ["ID_Colaborador", "NombreCompleto", "Tipo_registro", "ENTRADA_$", "SALIDA_$", "Detalle_transaccion", "Timestamp"]
+      ];
+      hojaContabilidad.getRange(1, 1, 1, encabezadosContabilidad[0].length)
+        .setValues(encabezadosContabilidad)
+        .setBackground("#2E86AB")
+        .setFontColor("white")
+        .setFontWeight("bold");
+      
+      // Configurar formatos de columnas
+      hojaContabilidad.getRange("A:A").setNumberFormat("@"); // ID como texto
+      hojaContabilidad.getRange("D:E").setNumberFormat("#,##0"); // Montos con formato de número
+      hojaContabilidad.getRange("G:G").setNumberFormat("dd/mm/yyyy hh:mm:ss"); // Timestamp
+      hojaContabilidad.autoResizeColumns(1, 7);
+      
+      // Configurar validación de datos para Tipo_registro
+      const rangoTiposRegistro = ss.getSheetByName(HOJA_CONFIG).getRange("N2:N");
+      const regla = SpreadsheetApp.newDataValidation()
+        .requireValueInRange(rangoTiposRegistro)
+        .setAllowInvalid(false)
+        .build();
+      hojaContabilidad.getRange("C2:C").setDataValidation(regla);
+    }
+    
+    // Asegurar que existan columnas para almacenar información del vale (documento y PDF) y estado
+    const headersCont = hojaContabilidad.getRange(1, 1, 1, hojaContabilidad.getLastColumn()).getValues()[0];
+    const neededCols = ['URL_Vale', 'PDF_FileId', 'URL_PDF', 'Vale_Status'];
+    neededCols.forEach(colName => {
+      if (headersCont.indexOf(colName) === -1) {
+        hojaContabilidad.getRange(1, hojaContabilidad.getLastColumn() + 1).setValue(colName)
+          .setBackground('#2E86AB').setFontColor('white').setFontWeight('bold');
+      }
+    });
+    hojaContabilidad.autoResizeColumns(1, hojaContabilidad.getLastColumn());
+    
+    // --- Hoja Bonificaciones ---
+    let sheetBonificaciones = ss.getSheetByName(HOJA_BONIFICACIONES);
+    if (!sheetBonificaciones) {
+      sheetBonificaciones = ss.insertSheet(HOJA_BONIFICACIONES);
+      // Cabecera inicial: la primera columna será 'Proyecto'; las columnas de colaboradores se generarán dinámicamente al exportar
+      const headers = [["Proyecto"]];
+      sheetBonificaciones.getRange(1, 1, 1, 1).setValues(headers).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+      sheetBonificaciones.autoResizeColumns(1, 3);
+    }
     
     return "Sistema inicializado correctamente. Todas las hojas han sido creadas y configuradas.";
   } catch (error) {
@@ -586,7 +659,8 @@ function consultarAsistencias(filtros) {
       nombreColaborador: mapaColaboradores[fila[1]] || 'Desconocido',
       fecha: Utilities.formatDate(new Date(fila[2]), Session.getScriptTimeZone(), 'dd/MM/yyyy'),
       estado: fila[3],
-      observaciones: fila[5] || ''
+      asignacion: fila[4] || '',
+      observaciones: fila[7] || ''
     }));
 
     return resultados.sort((a, b) => new Date(b.fecha.split('/').reverse().join('-')) - new Date(a.fecha.split('/').reverse().join('-')));
@@ -594,6 +668,158 @@ function consultarAsistencias(filtros) {
   } catch (e) {
     console.error("Error en consultarAsistencias:", e);
     return { error: e.message };
+  }
+}
+
+/**
+ * Calcula la matriz de bonificaciones (conteo de días asignados por proyecto x colaborador)
+ * @param {string} fechaDesde - 'yyyy-mm-dd'
+ * @param {string} fechaHasta - 'yyyy-mm-dd'
+ * @param {string} filtroBusqueda - texto opcional para filtrar colaboradores (id o nombre parcial)
+ * @returns {object} { proyectos: [...], colaboradores: [...], matriz: { proyecto: { colaboradorId: count } } }
+ */
+function obtenerBonificaciones(fechaDesde, fechaHasta, filtroBusqueda) {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheetAsistencia = ss.getSheetByName(HOJA_ASISTENCIA);
+    const sheetColaboradores = ss.getSheetByName(HOJA_COLABORADORES);
+
+    const colaboradoresData = sheetColaboradores.getDataRange().getValues().slice(1);
+    const asistenciaData = sheetAsistencia.getDataRange().getValues().slice(1);
+
+    // Crear mapa ID -> Nombre (trimmed)
+    const mapaColaboradores = {};
+    colaboradoresData.forEach(r => {
+      const id = (r[0] != null) ? r[0].toString().trim() : '';
+      const nombre = (r[1] != null) ? r[1].toString().trim() : '';
+      if (id) mapaColaboradores[id] = nombre;
+    });
+
+    const q = (filtroBusqueda || '').toString().trim().toLowerCase();
+
+    const desde = fechaDesde ? new Date(fechaDesde.replace(/-/g, '/')) : new Date('1970-01-01');
+    const hasta = fechaHasta ? new Date(fechaHasta.replace(/-/g, '/')) : new Date();
+    hasta.setHours(23,59,59,999);
+
+    const matriz = {};
+    const colaboradoresSet = {};
+
+    asistenciaData.forEach(row => {
+      try {
+        const rawId = row[1] != null ? row[1].toString().trim() : '';
+        if (!rawId) return;
+        // Aplicar filtro de colaborador si existe
+        if (q) {
+          const full = (rawId + ' ' + (mapaColaboradores[rawId] || '')).toLowerCase();
+          if (full.indexOf(q) === -1) return;
+        }
+
+        const fechaRegistro = row[2] ? new Date(row[2]) : null;
+        if (!fechaRegistro) return;
+        const fr = new Date(fechaRegistro.getFullYear(), fechaRegistro.getMonth(), fechaRegistro.getDate());
+        if (fr < new Date(desde.getFullYear(), desde.getMonth(), desde.getDate()) || fr > new Date(hasta.getFullYear(), hasta.getMonth(), hasta.getDate())) return;
+
+        const asignacion = row[4] != null ? row[4].toString().trim() : '';
+        if (!asignacion) return;
+
+        // Extraer nombre del proyecto: si contiene 'PROYECTO' intentar obtener la parte posterior, si no usar la asignacion tal cual
+        let proyectoNombre = '';
+        const up = asignacion.toUpperCase();
+        if (up.indexOf('PROYECTO') !== -1) {
+          // Buscar ':' y tomar lo que viene después, si no, quitar la palabra PROYECTO y posibles separadores
+          const idx = asignacion.indexOf(':');
+          if (idx !== -1) proyectoNombre = asignacion.substring(idx + 1).trim();
+          else proyectoNombre = asignacion.replace(/PROYECTO\s*-?\s*/i, '').trim();
+        } else {
+          proyectoNombre = asignacion;
+        }
+
+        if (!proyectoNombre) return;
+
+        // Normalizar claves
+        const projKey = proyectoNombre;
+        const colId = rawId;
+
+        if (!matriz[projKey]) matriz[projKey] = {};
+        matriz[projKey][colId] = (matriz[projKey][colId] || 0) + 1;
+        colaboradoresSet[colId] = true;
+      } catch (inner) {
+        // ignorar fila problemática
+      }
+    });
+
+    // Construir listas ordenadas
+    const proyectos = Object.keys(matriz).sort();
+    const colaboradores = Object.keys(colaboradoresSet).sort().map(id => ({ id: id, nombre: mapaColaboradores[id] || id }));
+
+    return { proyectos: proyectos, colaboradores: colaboradores, matriz: matriz };
+  } catch (e) {
+    console.error('Error en obtenerBonificaciones:', e);
+    return { error: e.message };
+  }
+}
+
+/**
+ * Escribe la matriz de bonificaciones en la hoja `Bonificaciones`.
+ * Filas = proyectos, Columnas = colaboradores (encabezado con 'Nombre (ID)').
+ * @param {string} fechaDesde - 'yyyy-mm-dd'
+ * @param {string} fechaHasta - 'yyyy-mm-dd'
+ * @param {string} filtroBusqueda - texto opcional para filtrar colaboradores
+ * @returns {string} Mensaje de resultado
+ */
+function guardarBonificacionesEnHoja(fechaDesde, fechaHasta, filtroBusqueda) {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheetBon = ss.getSheetByName(HOJA_BONIFICACIONES) || ss.insertSheet(HOJA_BONIFICACIONES);
+
+    const resultado = obtenerBonificaciones(fechaDesde, fechaHasta, filtroBusqueda);
+    if (!resultado || resultado.error) {
+      return `Error al calcular bonificaciones: ${resultado && resultado.error ? resultado.error : 'resultado vacío'}`;
+    }
+
+    const proyectos = resultado.proyectos || [];
+    const colaboradores = resultado.colaboradores || [];
+    const matriz = resultado.matriz || {};
+
+    // Limpiar hoja
+    sheetBon.clear();
+
+    // Construir cabecera
+    const header = ['Proyecto'];
+    colaboradores.forEach(c => {
+      header.push(`${c.nombre} (${c.id})`);
+    });
+
+    const rows = [];
+    rows.push(header);
+
+    // Para cada proyecto, construir fila con conteos en orden de colaboradores
+    proyectos.forEach(p => {
+      const fila = [p];
+      colaboradores.forEach(c => {
+        const v = (matriz[p] && matriz[p][c.id]) ? matriz[p][c.id] : 0;
+        fila.push(v);
+      });
+      rows.push(fila);
+    });
+
+    if (rows.length === 1) {
+      // No hay proyectos/colaboradores: dejar una nota
+      sheetBon.getRange(1,1).setValue('No hay datos para el periodo o filtros seleccionados.');
+      return 'Hoja Bonificaciones actualizada: no hay datos para mostrar.';
+    }
+
+    // Escribir matriz en la hoja empezando en A1
+    sheetBon.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
+
+    // Formato de cabecera
+    sheetBon.getRange(1, 1, 1, rows[0].length).setBackground('#2E86AB').setFontColor('white').setFontWeight('bold');
+    sheetBon.autoResizeColumns(1, rows[0].length);
+
+    return `Hoja Bonificaciones actualizada correctamente. Proyectos: ${proyectos.length}, Colaboradores: ${colaboradores.length}`;
+  } catch (e) {
+    console.error('Error en guardarBonificacionesEnHoja:', e);
+    return `Error al guardar bonificaciones: ${e.message}`;
   }
 }
 
@@ -615,9 +841,10 @@ function actualizarRegistroAsistencia(datos) {
 
     for (let i = 1; i < data.length; i++) {
       if (data[i][0] == datos.idRegistro) {
-        // Columna 4 es 'EstadoAsistencia' (índice 3), Columna 6 es 'Observaciones' (índice 5)
+        // Columna D (4) es 'EstadoAsistencia', Columna E (5) es 'Asignacion', Columna H (8) es 'Observaciones'
         sheet.getRange(i + 1, 4).setValue(datos.nuevoEstado);
-        sheet.getRange(i + 1, 6).setValue(datos.nuevasObservaciones);
+        sheet.getRange(i + 1, 5).setValue(datos.nuevaAsignacion);
+        sheet.getRange(i + 1, 8).setValue(datos.nuevasObservaciones);
         return "Registro actualizado correctamente.";
       }
     }
@@ -763,5 +990,642 @@ function eliminarProyecto(projectCode) {
   } catch (error) {
     console.error("Error en eliminarProyecto:", error);
     return `Error al eliminar: ${error.message}`;
+  }
+}
+
+// ===============================================================
+// GESTIÓN DE FONDOS DE CAJA
+// ===============================================================
+
+/**
+ * Obtiene los tipos de registro desde la hoja de configuración.
+ * @returns {Array<string>} Lista de tipos de registro.
+ */
+function obtenerTiposRegistro() {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheetConfig = ss.getSheetByName(HOJA_CONFIG);
+    const tiposRegistro = sheetConfig.getRange("N2:N")
+      .getValues()
+      .flat()
+      .filter(tipo => tipo !== "");
+    return tiposRegistro;
+  } catch (error) {
+    console.error("Error en obtenerTiposRegistro:", error);
+    return [];
+  }
+}
+
+/**
+ * Registra un movimiento en la hoja de contabilidad.
+ * @param {object} movimiento - Objeto con los datos del movimiento.
+ * @returns {string} Mensaje de éxito o error.
+ */
+function registrarMovimientoCaja(movimiento) {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_CONTABILIDAD);
+    
+    // Obtener datos del colaborador
+    const sheetColaboradores = ss.getSheetByName(HOJA_COLABORADORES);
+    const colaboradoresData = sheetColaboradores.getRange("A:B").getValues();
+    const colaborador = colaboradoresData.find(row => row[0].toString() === movimiento.idColaborador.toString());
+    
+    if (!colaborador) {
+      return { success: false, message: "Error: Colaborador no encontrado." };
+    }
+    
+    const entrada = movimiento.tipoMovimiento === "entrada" ? movimiento.monto : 0;
+    const salida = movimiento.tipoMovimiento === "salida" ? movimiento.monto : 0;
+    
+    // Preparar fila a insertar
+    const nuevaFila = [
+      movimiento.idColaborador,
+      colaborador[1], // Nombre completo
+      movimiento.tipoRegistro,
+      entrada,
+      salida,
+      movimiento.detalle,
+      new Date()
+    ];
+
+    // Insertar la fila de forma manual para obtener el índice
+    const lastRow = sheet.getLastRow();
+    sheet.getRange(lastRow + 1, 1, 1, nuevaFila.length).setValues([nuevaFila]);
+
+    // Si la hoja tiene la columna URL_Vale, la ubicamos
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const idxUrl = headers.indexOf('URL_Vale');
+
+    // Si es una salida, generar un vale de caja en Google Docs con dos copias
+    if (movimiento.tipoMovimiento === "salida") {
+      try {
+        const filaInsertada = lastRow + 1;
+        const resultVale = generarValeCaja(movimiento, colaborador); // devuelve { fileId, url }
+
+        if (resultVale && resultVale.url && idxUrl !== -1) {
+          // Escribir la URL en la nueva fila
+          sheet.getRange(filaInsertada, idxUrl + 1).setValue(resultVale.url);
+        }
+
+        // Ahora generar PDF, guardarlo en carpeta y compartir/enviar
+        try {
+          const carpeta = crearCarpetaValesSiNoExiste();
+          const pdfInfo = guardarPdfDesdeDoc(resultVale.fileId, carpeta);
+
+          // Buscar emails
+          const emailColaborador = obtenerEmailColaborador(movimiento.idColaborador); // columna I en Colaboradores
+          const emailAdmin = obtenerEmailAdmin();
+
+          // Compartir con colaborador y admin (si existen)
+          const emailsACompartir = [];
+          if (emailColaborador) emailsACompartir.push(emailColaborador);
+          if (emailAdmin) emailsACompartir.push(emailAdmin);
+          if (emailsACompartir.length > 0) {
+            compartirArchivoConEmails(resultVale.fileId, emailsACompartir);
+            if (pdfInfo && pdfInfo.fileId) {
+              compartirArchivoConEmails(pdfInfo.fileId, emailsACompartir);
+            }
+          }
+
+          // Enviar correos con PDF adjunto
+          const subject = `Vale de Caja - ${colaborador[1]} - $${Number(movimiento.monto).toFixed(2)}`;
+          const body = `Adjunto encontrará el vale de caja por $${Number(movimiento.monto).toFixed(2)}.\n\nDetalle: ${movimiento.detalle}`;
+          if (emailColaborador) enviarCorreoConAdjunto(emailColaborador, subject, body, pdfInfo.fileId);
+          if (emailAdmin) enviarCorreoConAdjunto(emailAdmin, subject, body, pdfInfo.fileId);
+
+          // Escribir info del PDF y estado en la fila
+          const idxPdf = headers.indexOf('PDF_FileId');
+          const idxUrlPdf = headers.indexOf('URL_PDF');
+          const idxStatus = headers.indexOf('Vale_Status');
+          if (idxPdf !== -1 && pdfInfo && pdfInfo.fileId) {
+            sheet.getRange(filaInsertada, idxPdf + 1).setValue(pdfInfo.fileId);
+          }
+          if (idxUrlPdf !== -1 && pdfInfo && pdfInfo.url) {
+            sheet.getRange(filaInsertada, idxUrlPdf + 1).setValue(pdfInfo.url);
+          }
+          if (idxStatus !== -1) {
+            sheet.getRange(filaInsertada, idxStatus + 1).setValue('ENVIADO');
+          }
+        } catch (errFlow) {
+          console.error('Error en flujo de PDF/compartir/enviar:', errFlow);
+          if (idxUrl !== -1) sheet.getRange(filaInsertada, idxUrl + 1).setValue(resultVale.url || '');
+          // marcar estado de error
+          const idxStatusErr = headers.indexOf('Vale_Status');
+          if (idxStatusErr !== -1) sheet.getRange(filaInsertada, idxStatusErr + 1).setValue('ERROR');
+        }
+
+        return { success: true, message: 'Movimiento registrado correctamente.', valeUrl: resultVale && resultVale.url ? resultVale.url : null, pdfUrl: (typeof pdfInfo !== 'undefined' && pdfInfo && pdfInfo.url) ? pdfInfo.url : null };
+      } catch (errVale) {
+        console.error('Error al generar vale de caja:', errVale);
+        return { success: true, message: `Movimiento registrado correctamente. Pero no se pudo generar el vale: ${errVale.message}` };
+      }
+    }
+
+    return { success: true, message: "Movimiento registrado correctamente." };
+  } catch (error) {
+    console.error("Error en registrarMovimientoCaja:", error);
+    return { success: false, message: `Error al registrar el movimiento: ${error.message}` };
+  }
+}
+
+/**
+ * Genera un documento tipo "Vale de Caja" con dos copias (Administrador y Colaborador)
+ * y devuelve la URL del documento.
+ * @param {object} movimiento
+ * @param {Array} colaborador Fila con datos del colaborador [id, nombre]
+ * @returns {string} URL del documento creado
+ */
+function generarValeCaja(movimiento, colaborador) {
+  // Crear título y contenido base
+  const idCol = movimiento.idColaborador;
+  const nombre = colaborador[1] || '';
+  const fecha = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm');
+  const monto = movimiento.monto || 0;
+  const detalle = movimiento.detalle || '';
+
+  const titulo = `Vale de Caja - ${idCol} - ${nombre} - ${Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMddHHmmss')}`;
+
+  const doc = DocumentApp.create(titulo);
+  const body = doc.getBody();
+
+  // Encabezado general
+  const estiloTitulo = {};
+  body.appendParagraph('VALE DE CAJA').setHeading(DocumentApp.ParagraphHeading.HEADING1);
+
+  const tabla = body.appendTable();
+  let row = tabla.appendTableRow();
+  row.appendTableCell('Colaborador');
+  row.appendTableCell(nombre);
+  row = tabla.appendTableRow();
+  row.appendTableCell('ID Colaborador');
+  row.appendTableCell(idCol);
+  row = tabla.appendTableRow();
+  row.appendTableCell('Tipo de Registro');
+  row.appendTableCell(movimiento.tipoRegistro || '');
+  row = tabla.appendTableRow();
+  row.appendTableCell('Fecha');
+  row.appendTableCell(fecha);
+  row = tabla.appendTableRow();
+  row.appendTableCell('Monto entregado');
+  row.appendTableCell(`$${Number(monto).toFixed(2)}`);
+  row = tabla.appendTableRow();
+  row.appendTableCell('Detalle');
+  row.appendTableCell(detalle);
+
+  body.appendParagraph('\nDECLARACIÓN:').setBold(true);
+  body.appendParagraph('El dinero entregado debe ser rendido o justificado en el plazo establecido por la empresa. Si el dinero no es rendido en el tiempo establecido, éste podrá ser descontado de la remuneración del colaborador según la normativa interna.');
+
+  body.appendParagraph('\n').appendPageBreak();
+
+  // Segunda copia
+  body.appendParagraph('COPIA - Colaborador').setHeading(DocumentApp.ParagraphHeading.HEADING2);
+  const tabla2 = body.appendTable();
+  row = tabla2.appendTableRow();
+  row.appendTableCell('Colaborador');
+  row.appendTableCell(nombre);
+  row = tabla2.appendTableRow();
+  row.appendTableCell('ID Colaborador');
+  row.appendTableCell(idCol);
+  row = tabla2.appendTableRow();
+  row.appendTableCell('Monto entregado');
+  row.appendTableCell(`$${Number(monto).toFixed(2)}`);
+
+  body.appendParagraph('\nFirma del Colaborador: ____________________________');
+  body.appendParagraph('\nFirma y Timbre del Administrador: ____________________________');
+
+  doc.saveAndClose();
+  const fileId = doc.getId();
+  const url = doc.getUrl();
+  return { fileId: fileId, url: url };
+}
+
+/**
+ * Función temporal de prueba para generar un vale con datos mock.
+ * Úsala desde el editor de Apps Script para forzar la pantalla de autorización
+ * y verificar que la generación de documentos y PDFs funciona correctamente.
+ */
+function pruebaGenerarValeMock() {
+  const movimientoMock = {
+    idColaborador: 'MOCK123',
+    tipoMovimiento: 'salida',
+    tipoRegistro: 'GASTO',
+    monto: 123.45,
+    detalle: 'Gasto de prueba generado por pruebaGenerarValeMock'
+  };
+
+  // Buscamos un colaborador real en la hoja; si no existe, usamos un nombre genérico
+  const ss = SpreadsheetApp.openById(getSpreadsheetId());
+  const sheetCol = ss.getSheetByName(HOJA_COLABORADORES);
+  const dataCol = sheetCol.getDataRange().getValues();
+  let colaborador = null;
+  if (dataCol.length > 1) {
+    // Tomar el primer colaborador real
+    colaborador = [dataCol[1][0], dataCol[1][1]];
+    movimientoMock.idColaborador = dataCol[1][0];
+  } else {
+    colaborador = [movimientoMock.idColaborador, 'Colaborador de Prueba'];
+  }
+
+  // Llamar a generarValeCaja directamente para forzar la creación del Doc
+  const resultado = generarValeCaja(movimientoMock, colaborador);
+  Logger.log('Resultado pruebaGenerarValeMock: %s', JSON.stringify(resultado));
+  return resultado;
+}
+
+/**
+ * Obtiene el resumen de saldos por colaborador.
+ * @returns {Array<object>} Arreglo con los saldos por colaborador.
+ */
+/**
+ * Obtiene el resumen de saldos por colaborador.
+ * Ahora acepta parámetros opcionales para búsqueda inteligente:
+ * - filtro: búsqueda parcial en id, nombre y tipoRegistro (case-insensitive)
+ * - nombreColaborador: filtro específico por nombre (parcial, case-insensitive)
+ * @param {object|string} opciones Puede ser un string (filtro) o un objeto { filtro, nombreColaborador }
+ * @returns {Array<object>} Arreglo con los saldos por colaborador filtrados
+ */
+function obtenerResumenSaldos(opciones) {
+  try {
+    // Normalizar parámetros
+    let filtro = '';
+    let nombreColaborador = '';
+    if (typeof opciones === 'string') {
+      filtro = opciones;
+    } else if (typeof opciones === 'object' && opciones !== null) {
+      filtro = opciones.filtro || '';
+      nombreColaborador = opciones.nombreColaborador || '';
+    }
+
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_CONTABILIDAD);
+    const data = sheet.getDataRange().getValues();
+
+    if (data.length <= 1) {
+      return [];
+    }
+
+    const saldos = {};
+
+    // Procesar cada registro
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      const id = row[0] != null ? row[0].toString() : '';
+      const nombre = row[1] != null ? row[1].toString() : '';
+      const tipoRegistro = row[2] != null ? row[2].toString() : '';
+      const entrada = Number(row[3]) || 0;
+      const salida = Number(row[4]) || 0;
+
+      if (!saldos[id]) {
+        saldos[id] = {
+          nombre: nombre,
+          tipos: {}
+        };
+      }
+
+      if (!saldos[id].tipos[tipoRegistro]) {
+        saldos[id].tipos[tipoRegistro] = {
+          entradas: 0,
+          salidas: 0
+        };
+      }
+
+      saldos[id].tipos[tipoRegistro].entradas += entrada;
+      saldos[id].tipos[tipoRegistro].salidas += salida;
+    }
+
+    // Convertir a array y filtrar solo saldos positivos
+    const resultado = [];
+    for (const [id, info] of Object.entries(saldos)) {
+      for (const [tipo, montos] of Object.entries(info.tipos)) {
+        const saldo = montos.salidas - montos.entradas;
+        if (saldo > 0) {
+          resultado.push({
+            id: id,
+            nombre: info.nombre,
+            tipoRegistro: tipo,
+            saldo: saldo
+          });
+        }
+      }
+    }
+
+    // Si hay filtro, aplicar búsqueda parcial (case-insensitive) sobre id, nombre y tipoRegistro
+    const aplicarFiltro = (item) => {
+      if (!filtro && !nombreColaborador) return true;
+      const q = (filtro || '').toString().trim().toLowerCase();
+      const qName = (nombreColaborador || '').toString().trim().toLowerCase();
+
+      let pasaFiltro = true;
+      if (q) {
+        pasaFiltro = (
+          (item.id || '').toString().toLowerCase().indexOf(q) !== -1 ||
+          (item.nombre || '').toString().toLowerCase().indexOf(q) !== -1 ||
+          (item.tipoRegistro || '').toString().toLowerCase().indexOf(q) !== -1
+        );
+      }
+      if (qName) {
+        pasaFiltro = pasaFiltro && ((item.nombre || '').toString().toLowerCase().indexOf(qName) !== -1);
+      }
+      return pasaFiltro;
+    };
+
+    const filtrado = resultado.filter(aplicarFiltro);
+    return filtrado;
+  } catch (error) {
+    console.error("Error en obtenerResumenSaldos:", error);
+    return [];
+  }
+}
+
+// ===================== Funciones auxiliares para vales y envío =====================
+
+/**
+ * Obtiene el email del colaborador desde la hoja `Colaboradores`.
+ * Se asume que el email está en la columna I (índice 8, 0-based).
+ * @param {string} idColaborador
+ * @returns {string|null} email o null
+ */
+function obtenerEmailColaborador(idColaborador) {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_COLABORADORES);
+    const data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (row[0] != null && row[0].toString() === idColaborador.toString()) {
+        // Columna I -> índice 8
+        return row[8] ? row[8].toString().trim() : null;
+      }
+    }
+    return null;
+  } catch (e) {
+    console.error('Error en obtenerEmailColaborador:', e);
+    return null;
+  }
+}
+
+/**
+ * Obtiene un email de administrador desde la hoja `Usuarios` (primer admin encontrado).
+ * @returns {string|null}
+ */
+function obtenerEmailAdmin() {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_USUARIOS);
+    const data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      const email = data[i][0] ? data[i][0].toString().trim() : '';
+      const rol = data[i][1] ? data[i][1].toString().trim().toUpperCase() : '';
+      if (rol === ROLES.ADMIN && email) return email;
+    }
+    // fallback: usuario activo
+    return Session.getActiveUser().getEmail() || null;
+  } catch (e) {
+    console.error('Error en obtenerEmailAdmin:', e);
+    return null;
+  }
+}
+
+/**
+ * Crea (si no existe) una carpeta llamada 'Vales_Caja' en la raíz del Drive del usuario/script.
+ * @returns {Folder} carpeta creada o existente
+ */
+function crearCarpetaValesSiNoExiste() {
+  try {
+    const nombre = 'Vales_Caja';
+    const folders = DriveApp.getFoldersByName(nombre);
+    if (folders.hasNext()) {
+      return folders.next();
+    }
+    const folder = DriveApp.createFolder(nombre);
+    return folder;
+  } catch (e) {
+    console.error('Error en crearCarpetaValesSiNoExiste:', e);
+    throw e;
+  }
+}
+
+/**
+ * Genera un PDF a partir de un Google Doc y lo guarda en la carpeta indicada.
+ * @param {string} docId
+ * @param {Folder} carpeta
+ * @returns {object} { fileId, url }
+ */
+function guardarPdfDesdeDoc(docId, carpeta) {
+  try {
+    const fileDoc = DriveApp.getFileById(docId);
+    const blobPdf = fileDoc.getAs(MimeType.PDF);
+    const nombrePdf = fileDoc.getName() + '.pdf';
+    const filePdf = carpeta.createFile(blobPdf).setName(nombrePdf);
+    return { fileId: filePdf.getId(), url: filePdf.getUrl() };
+  } catch (e) {
+    console.error('Error en guardarPdfDesdeDoc:', e);
+    throw e;
+  }
+}
+
+/**
+ * Comparte un archivo (Docs o PDF) con una lista de emails como viewers.
+ * @param {string} fileId
+ * @param {Array<string>} emails
+ */
+function compartirArchivoConEmails(fileId, emails) {
+  try {
+    const file = DriveApp.getFileById(fileId);
+    emails.forEach(email => {
+      try {
+        file.addViewer(email);
+      } catch (e) {
+        console.warn('No se pudo compartir con', email, e);
+      }
+    });
+  } catch (e) {
+    console.error('Error en compartirArchivoConEmails:', e);
+  }
+}
+
+/**
+ * Envía un correo con el PDF adjunto (usando MailApp).
+ * @param {string} emailTo
+ * @param {string} subject
+ * @param {string} body
+ * @param {string} filePdfId
+ */
+function enviarCorreoConAdjunto(emailTo, subject, body, filePdfId) {
+  try {
+    if (!emailTo || !filePdfId) return;
+    const filePdf = DriveApp.getFileById(filePdfId);
+    const blob = filePdf.getAs(MimeType.PDF);
+    MailApp.sendEmail({
+      to: emailTo,
+      subject: subject,
+      body: body,
+      attachments: [blob]
+    });
+  } catch (e) {
+    console.error('Error en enviarCorreoConAdjunto:', e);
+  }
+}
+
+// =============================================================================
+// GESTIÓN DE PONDERACIÓN DE BONOS
+// =============================================================================
+
+/**
+ * Obtiene la matriz completa de datos para la página de ponderación.
+ * Combina colaboradores activos y proyectos de asistencia con los datos guardados en la hoja 'ponderacion'.
+ * @returns {object} Un objeto con { colaboradores: [{id, nombre}, ...], proyectos: [{nombre, ponderaciones: {colabId: valor}}, ...] }.
+ */
+function obtenerDatosPonderacion() {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheetColaboradores = ss.getSheetByName(HOJA_COLABORADORES);
+    const sheetAsistencia = ss.getSheetByName(HOJA_ASISTENCIA);
+    const sheetPonderacion = ss.getSheetByName(HOJA_PONDERACION);
+
+    // 1. Obtener todos los colaboradores activos (ID y Nombre)
+    const colaboradoresData = sheetColaboradores.getDataRange().getValues().slice(1);
+    const colaboradoresActivos = colaboradoresData
+      .filter(row => row[6] === 'Activo')
+      .map(row => ({ id: row[0].toString().trim(), nombre: row[1].toString().trim() }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre)); // Ordenar alfabéticamente
+
+    const mapaColaboradoresIdNombre = new Map(colaboradoresActivos.map(c => [c.id, c.nombre]));
+
+    // 2. Obtener todos los proyectos únicos desde RegistrosAsistencia
+    const asignaciones = sheetAsistencia.getRange("E2:E").getValues().flat().filter(String);
+    const proyectosSet = new Set();
+    asignaciones.forEach(asignacion => {
+      let proyectoNombre = '';
+      const up = asignacion.toUpperCase();
+      if (up.startsWith('PROYECTO')) {
+        const idx = asignacion.indexOf(':');
+        if (idx !== -1) {
+          proyectoNombre = asignacion.substring(idx + 1).trim();
+        } else {
+          proyectoNombre = asignacion.replace(/PROYECTO\s*-?\s*/i, '').trim();
+        }
+        if (proyectoNombre) {
+          proyectosSet.add(proyectoNombre);
+        }
+      }
+    });
+    const todosLosProyectos = Array.from(proyectosSet).sort();
+
+    // 3. Leer los datos de ponderación existentes
+    const ponderacionesGuardadas = {}; // { proyecto: { nombreColaborador: valor } }
+    if (sheetPonderacion) {
+      const ponderacionData = sheetPonderacion.getDataRange().getValues();
+      if (ponderacionData.length > 1) {
+        const headers = ponderacionData[0].slice(1); // Nombres de colaboradores
+        ponderacionData.slice(1).forEach(row => {
+          const proyecto = row[0];
+          ponderacionesGuardadas[proyecto] = {};
+          headers.forEach((nombreCol, index) => {
+            ponderacionesGuardadas[proyecto][nombreCol] = row[index + 1];
+          });
+        });
+      }
+    }
+    
+    // 4. Construir la matriz final
+    const mapaColaboradoresNombreId = new Map(colaboradoresActivos.map(c => [c.nombre, c.id]));
+    const proyectosResult = todosLosProyectos.map(nombreProyecto => {
+      const ponderaciones = {};
+      colaboradoresActivos.forEach(colab => {
+        const valorGuardado = (ponderacionesGuardadas[nombreProyecto] && ponderacionesGuardadas[nombreProyecto][colab.nombre]) ? ponderacionesGuardadas[nombreProyecto][colab.nombre] : 0;
+        ponderaciones[colab.id] = valorGuardado;
+      });
+      return {
+        nombre: nombreProyecto,
+        ponderaciones: ponderaciones
+      };
+    });
+
+    return {
+      colaboradores: colaboradoresActivos,
+      proyectos: proyectosResult
+    };
+
+  } catch (e) {
+    console.error("Error en obtenerDatosPonderacion:", e);
+    return { error: e.message };
+  }
+}
+
+
+/**
+ * Guarda o actualiza una fila de ponderación para un proyecto específico.
+ * @param {object} dataFila - Objeto con { nombreProyecto: '...', ponderaciones: { colabId: valor, ... } }.
+ * @returns {object} Un objeto con { success: true/false, message: '...' }.
+ */
+function guardarPonderacionFila(dataFila) {
+  try {
+    const { nombreProyecto, ponderaciones } = dataFila;
+    if (!nombreProyecto || !ponderaciones) {
+      throw new Error("Datos incompletos. Se requiere nombre del proyecto y ponderaciones.");
+    }
+
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    let sheet = ss.getSheetByName(HOJA_PONDERACION);
+    if (!sheet) {
+      sheet = ss.insertSheet(HOJA_PONDERACION);
+      sheet.getRange(1, 1).setValue("Proyecto").setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+    }
+
+    const sheetData = sheet.getDataRange().getValues();
+    const headers = sheetData.length > 0 ? sheetData[0] : ["Proyecto"];
+    
+    // Obtener mapa de ID a Nombre para los headers
+    const sheetColaboradores = ss.getSheetByName(HOJA_COLABORADORES);
+    const colaboradoresData = sheetColaboradores.getDataRange().getValues().slice(1);
+    const mapaIdANombre = new Map(colaboradoresData.map(row => [row[0].toString().trim(), row[1].toString().trim()]));
+
+    // --- Sincronizar Cabeceras (Columnas) ---
+    const mapaNombreAColumna = new Map(headers.map((h, i) => [h, i + 1]));
+    let headerChanged = false;
+    for (const colabId in ponderaciones) {
+      const nombreColab = mapaIdANombre.get(colabId);
+      if (nombreColab && !mapaNombreAColumna.has(nombreColab)) {
+        const newColIndex = sheet.getLastColumn() + 1;
+        sheet.getRange(1, newColIndex).setValue(nombreColab).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+        mapaNombreAColumna.set(nombreColab, newColIndex);
+        headerChanged = true;
+      }
+    }
+    // Si se añadieron columnas, redimensionar
+    if(headerChanged) sheet.autoResizeColumns(1, sheet.getLastColumn());
+
+
+    // --- Preparar la Fila de Datos ---
+    const filaParaGuardar = new Array(mapaNombreAColumna.size).fill(0);
+    filaParaGuardar[0] = nombreProyecto;
+
+    for (const colabId in ponderaciones) {
+        const nombreColab = mapaIdANombre.get(colabId);
+        if (nombreColab && mapaNombreAColumna.has(nombreColab)) {
+            const colIdx = mapaNombreAColumna.get(nombreColab);
+            filaParaGuardar[colIdx - 1] = ponderaciones[colabId] || 0;
+        }
+    }
+    
+    // --- Encontrar y Actualizar/Insertar Fila ---
+    const proyectosEnHoja = sheet.getRange(2, 1, sheet.getLastRow() > 1 ? sheet.getLastRow() - 1 : 1).getValues().flat();
+    const rowIndex = proyectosEnHoja.findIndex(p => p === nombreProyecto);
+
+    if (rowIndex !== -1 && proyectosEnHoja[0] !== '') {
+      // Actualizar fila existente
+      const rowNum = rowIndex + 2; // +1 por 0-based, +1 por header
+      sheet.getRange(rowNum, 1, 1, filaParaGuardar.length).setValues([filaParaGuardar]);
+    } else {
+      // Añadir nueva fila
+      sheet.appendRow(filaParaGuardar);
+    }
+
+    return { success: true, message: "Ponderación guardada correctamente." };
+  } catch (e) {
+    console.error("Error en guardarPonderacionFila:", e);
+    return { success: false, message: `Error al guardar: ${e.message}` };
   }
 }
