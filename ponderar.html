@@ -2,170 +2,230 @@
 <html>
 <head>
   <base target="_top">
+  <style><?!= include('styles.html'); ?></style>
   <style>
-    :root {
-      --primary-color: #2E86AB;
-      --secondary-color: #5DADE2;
-      --background-light: #E8F4F8;
-      --background-white: #FAFBFC;
-      --text-dark: #34495E;
-      --border-color: #E5F2F7;
+    /* Estilos adicionales específicos para esta página */
+    .input-ponderacion {
+      width: 80px;
+      text-align: center;
     }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--background-light); padding: 20px; }
-    .card { background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.06); margin-bottom: 25px; border: 1px solid var(--border-color); }
-    .card-header { padding: 20px; background: #F0F8FC; border-bottom: 1px solid var(--border-color); font-weight: 600; color: var(--primary-color); font-size: 1.5rem; }
-    .card-body { padding: 25px; }
-    .table-container { overflow: auto; max-height: 70vh; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border: 1px solid var(--border-color); }
-    table { width: 100%; border-collapse: collapse; background: white; }
-    th, td { padding: 8px 12px; text-align: center; border: 1px solid var(--border-color); white-space: nowrap; }
-    th { background: #F0F8FC; font-weight: 600; color: var(--primary-color); position: sticky; top: 0; z-index: 2; }
-    td:first-child { text-align: left; font-weight: bold; position: sticky; left: 0; background-color: #F8FBFD; z-index: 1; }
-    .btn { padding: 12px 20px; border: none; border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease; }
-    .btn-success { background: #28a745; color: white; }
-    .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-    .btn:disabled { background: #ccc; cursor: not-allowed; }
-    .actions { margin-bottom: 20px; }
-    .message { padding: 12px 15px; border-radius: 8px; margin: 15px 0; font-weight: 500; }
-    .message.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-    .message.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-    .message.info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
-    .loading { display: none; text-align: center; padding: 20px; color: var(--secondary-color); font-style: italic; }
-    .ponderacion-input { width: 70px; text-align: center; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); }
-    .ponderacion-input:focus { border-color: var(--secondary-color); outline: none; }
+    .table-responsive {
+      max-height: 75vh;
+    }
+    .btn-action-cell {
+      min-width: 180px; /* Espacio para los 3 botones */
+      text-align: center;
+    }
+    .table th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    .table td:first-child, .table th:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 1;
+      background-color: #f8f9fa;
+    }
   </style>
 </head>
 <body>
 
-  <div class="card">
-    <div class="card-header">Ponderación de Bonos por Proyecto</div>
-    <div class="card-body">
-      <div class="actions">
-        <button class="btn btn-success" id="saveButton" onclick="guardarPesosPonderacion(event)">Guardar Pesos</button>
+  <div class="container-fluid mt-3">
+    <div class="card">
+      <div class="card-header">
+        <h3>Gestión de Ponderaciones por Proyecto</h3>
+        <p class="card-subtitle text-muted">Defina el peso (0-100) de cada colaborador en los proyectos. Use el botón "Editar" en cada fila para modificar los valores.</p>
       </div>
-      <div id="msgPonderacion"></div>
-      <div id="loadingPonderacion" class="loading">Cargando...</div>
-      <div class="table-container" id="tablaPonderacionContainer"></div>
+      <div class="card-body">
+        <div id="ponderacion-messages"></div>
+        <div id="ponderacion-table-container" class="table-responsive">
+          <div class="text-center p-4">
+            <div class="spinner-border text-primary" role="status">
+              <span class="sr-only">Cargando...</span>
+            </div>
+            <p class="mt-2">Cargando datos de ponderación...</p>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
 <script>
-  document.addEventListener("DOMContentLoaded", function() {
-    cargarVistaPonderacion();
+document.addEventListener("DOMContentLoaded", function() {
+  cargarVistaPonderacion();
+  
+  // Adjuntar el listener de eventos al contenedor de la tabla
+  document.getElementById('ponderacion-table-container').addEventListener('click', handlePonderacionTableClick);
+});
+
+/**
+ * Muestra un mensaje al usuario en un contenedor específico.
+ */
+function showPonderacionMessage(message, type) {
+  const container = document.getElementById('ponderacion-messages');
+  if (container) {
+    const alertType = type === 'success' ? 'alert-success' : 'alert-danger';
+    container.innerHTML = `<div class="alert ${alertType}" role="alert">${message}</div>`;
+    if (type === 'success') {
+      setTimeout(() => { container.innerHTML = ''; }, 4000);
+    }
+  }
+}
+
+/**
+ * Inicia la carga de datos desde el backend.
+ */
+function cargarVistaPonderacion() {
+  document.getElementById('ponderacion-table-container').innerHTML = `
+    <div class="text-center p-4">
+      <div class="spinner-border text-primary" role="status"><span class="sr-only">Cargando...</span></div>
+      <p class="mt-2">Cargando datos de ponderación...</p>
+    </div>`;
+  
+  google.script.run
+    .withSuccessHandler(renderPonderacionTabla)
+    .withFailureHandler(error => {
+      showPonderacionMessage(`Error al cargar datos: ${error.message}`, 'error');
+      document.getElementById('ponderacion-table-container').innerHTML = '';
+    })
+    .obtenerDatosPonderacion();
+}
+
+/**
+ * Renderiza la tabla de ponderaciones con los datos del backend.
+ */
+function renderPonderacionTabla(data) {
+  const container = document.getElementById('ponderacion-table-container');
+  if (data.error) {
+    showPonderacionMessage(`Error: ${data.error}`, 'error');
+    container.innerHTML = '';
+    return;
+  }
+  if (!data.proyectos || data.proyectos.length === 0) {
+    container.innerHTML = '<div class="alert alert-info">No se encontraron proyectos con registros de asistencia.</div>';
+    return;
+  }
+   if (!data.colaboradores || data.colaboradores.length === 0) {
+    container.innerHTML = '<div class="alert alert-info">No hay colaboradores activos para mostrar.</div>';
+    return;
+  }
+
+  let tableHtml = '<table class="table table-bordered table-hover table-sm"><thead><tr><th>Proyecto</th>';
+  data.colaboradores.forEach(c => {
+    tableHtml += `<th>${c.nombre}</th>`;
+  });
+  tableHtml += '<th class="btn-action-cell">Acciones</th></tr></thead><tbody>';
+
+  data.proyectos.forEach(p => {
+    tableHtml += `<tr data-proyecto-nombre="${p.nombre}">`;
+    tableHtml += `<td>${p.nombre}</td>`;
+    data.colaboradores.forEach(c => {
+      const valor = p.ponderaciones[c.id] || 0;
+      tableHtml += `
+        <td>
+          <span class="valor-ponderacion">${valor}</span>
+          <input type="number" class="form-control input-ponderacion" style="display:none;" value="${valor}" data-colab-id="${c.id}" min="0" max="100">
+        </td>`;
+    });
+    tableHtml += `
+      <td class="btn-action-cell">
+        <button class="btn btn-sm btn-primary btn-edit-ponderacion">Editar</button>
+        <button class="btn btn-sm btn-success btn-save-ponderacion" style="display:none;">Guardar</button>
+        <button class="btn btn-sm btn-secondary btn-cancel-ponderacion" style="display:none;">Cancelar</button>
+      </td>`;
+    tableHtml += '</tr>';
   });
 
-  function showMessage(containerId, message, type) {
-    const container = document.getElementById(containerId);
-    if (container) {
-      container.innerHTML = `<div class="message ${type}">${message}</div>`;
-      if (type !== 'error' && type !== 'info') {
-        setTimeout(() => { container.innerHTML = ''; }, 5000);
-      }
-    }
+  tableHtml += '</tbody></table>';
+  container.innerHTML = tableHtml;
+}
+
+/**
+ * Maneja los clics en los botones de la tabla.
+ */
+function handlePonderacionTableClick(event) {
+  const target = event.target;
+  const row = target.closest('tr');
+  if (!row) return;
+
+  if (target.classList.contains('btn-edit-ponderacion')) {
+    togglePonderacionRow(row, true);
+  } else if (target.classList.contains('btn-save-ponderacion')) {
+    guardarFilaPonderacion(row);
+  } else if (target.classList.contains('btn-cancel-ponderacion')) {
+    togglePonderacionRow(row, false);
   }
+}
 
-  function cargarVistaPonderacion() {
-    const loading = document.getElementById('loadingPonderacion');
-    const container = document.getElementById('tablaPonderacionContainer');
-    loading.style.display = 'block';
-    container.innerHTML = '';
-    showMessage('msgPonderacion', 'Cargando datos de proyectos y colaboradores...', 'info');
+/**
+ * Cambia una fila entre modo de vista y modo de edición.
+ */
+function togglePonderacionRow(row, isEditing) {
+  const spans = row.querySelectorAll('.valor-ponderacion');
+  const inputs = row.querySelectorAll('.input-ponderacion');
+  const btnEdit = row.querySelector('.btn-edit-ponderacion');
+  const btnSave = row.querySelector('.btn-save-ponderacion');
+  const btnCancel = row.querySelector('.btn-cancel-ponderacion');
 
-    google.script.run
-      .withSuccessHandler(data => {
-        loading.style.display = 'none';
-        if (data.error) {
-          showMessage('msgPonderacion', `Error al cargar datos: ${data.error}`, 'error');
-          return;
-        }
-        if (!data.proyectos || data.proyectos.length === 0) {
-          container.innerHTML = '<div class="message info">No hay proyectos con registros de asistencia para ponderar.</div>';
-          return;
-        }
-        if (!data.trabajadores || data.trabajadores.length === 0) {
-          container.innerHTML = '<div class="message info">No hay colaboradores activos para ponderar.</div>';
-          return;
-        }
-        
-        generarTablaPonderacion(data.proyectos, data.trabajadores);
-        showMessage('msgPonderacion', '', 'info');
-      })
-      .withFailureHandler(error => {
-        loading.style.display = 'none';
-        showMessage('msgPonderacion', `Error: ${error.message}`, 'error');
-      })
-      .obtenerDatosParaPonderacion();
-  }
-
-  function generarTablaPonderacion(proyectos, trabajadores) {
-    const container = document.getElementById('tablaPonderacionContainer');
-    
-    let table = '<table id="tabla-ponderacion"><thead><tr><th>Proyecto</th>';
-    trabajadores.forEach(t => {
-      table += `<th>${t}</th>`;
+  if (isEditing) {
+    spans.forEach((span, index) => {
+      span.style.display = 'none';
+      inputs[index].style.display = 'block';
+      inputs[index].value = span.textContent; // Asegurar que el input tiene el valor actual
     });
-    table += '</tr></thead><tbody>';
-
-    proyectos.forEach(p => {
-      const safeProjectName = p.replace(/"/g, '&quot;');
-      table += `<tr data-proyecto="${safeProjectName}"><td>${p}</td>`;
-      trabajadores.forEach(t => {
-        const safeWorkerName = t.replace(/"/g, '&quot;');
-        table += `<td><input type="number" class="ponderacion-input" min="0" max="100" value="0" data-trabajador="${safeWorkerName}"></td>`;
-      });
-      table += '</tr>';
-    });
-
-    table += '</tbody></table>';
-    container.innerHTML = table;
+    btnEdit.style.display = 'none';
+    btnSave.style.display = 'inline-block';
+    btnCancel.style.display = 'inline-block';
+  } else {
+    spans.forEach(span => span.style.display = 'inline');
+    inputs.forEach(input => input.style.display = 'none');
+    btnEdit.style.display = 'inline-block';
+    btnSave.style.display = 'none';
+    btnCancel.style.display = 'none';
   }
+}
 
-  function guardarPesosPonderacion(event) {
-    event.preventDefault();
-    const btn = document.getElementById('saveButton');
-    const tabla = document.getElementById('tabla-ponderacion');
-    if (!tabla) {
-      showMessage('msgPonderacion', 'La tabla de ponderación no está cargada.', 'error');
-      return;
-    }
+/**
+ * Recopila datos de una fila y los envía al backend para guardarlos.
+ */
+function guardarFilaPonderacion(row) {
+  const btnSave = row.querySelector('.btn-save-ponderacion');
+  btnSave.disabled = true;
+  btnSave.textContent = 'Guardando...';
 
-    const pesosGuardados = {};
-    const filas = tabla.querySelectorAll('tbody tr');
+  const nombreProyecto = row.dataset.proyectoNombre;
+  const ponderaciones = {};
+  row.querySelectorAll('.input-ponderacion').forEach(input => {
+    ponderaciones[input.dataset.colabId] = parseInt(input.value, 10) || 0;
+  });
 
-    filas.forEach(fila => {
-      const proyecto = fila.dataset.proyecto;
-      if (proyecto) {
-        pesosGuardados[proyecto] = {};
-        const inputs = fila.querySelectorAll('.ponderacion-input');
-        inputs.forEach(input => {
-          const trabajador = input.dataset.trabajador;
-          const valor = parseInt(input.value, 10);
-          if (trabajador && !isNaN(valor)) {
-            pesosGuardados[proyecto][trabajador] = valor >= 0 && valor <= 100 ? valor : 0;
-          }
+  const dataFila = { nombreProyecto, ponderaciones };
+
+  google.script.run
+    .withSuccessHandler(response => {
+      btnSave.disabled = false;
+      btnSave.textContent = 'Guardar';
+      if (response.success) {
+        showPonderacionMessage(`Ponderaciones para '${nombreProyecto}' guardadas.`, 'success');
+        // Actualizar los spans con los nuevos valores
+        row.querySelectorAll('.input-ponderacion').forEach(input => {
+          const span = input.closest('td').querySelector('.valor-ponderacion');
+          span.textContent = input.value;
         });
+        togglePonderacionRow(row, false);
+      } else {
+        showPonderacionMessage(response.message, 'error');
       }
-    });
-
-    if (Object.keys(pesosGuardados).length === 0) {
-      showMessage('msgPonderacion', 'No hay datos para guardar.', 'info');
-      return;
-    }
-
-    showMessage('msgPonderacion', 'Guardando pesos...', 'info');
-    btn.disabled = true;
-
-    google.script.run
-      .withSuccessHandler(response => {
-        showMessage('msgPonderacion', response, response.includes('correctamente') ? 'success' : 'error');
-        btn.disabled = false;
-      })
-      .withFailureHandler(error => {
-        showMessage('msgPonderacion', `Error: ${error.message}`, 'error');
-        btn.disabled = false;
-      })
-      .guardarPonderacion(pesosGuardados);
-  }
+    })
+    .withFailureHandler(error => {
+      btnSave.disabled = false;
+      btnSave.textContent = 'Guardar';
+      showPonderacionMessage(`Error al guardar: ${error.message}`, 'error');
+    })
+    .guardarPonderacionFila(dataFila);
+}
 </script>
+
 </body>
 </html>

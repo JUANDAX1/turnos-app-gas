@@ -1468,25 +1468,32 @@ function enviarCorreoConAdjunto(emailTo, subject, body, filePdfId) {
   }
 }
 
-// ==============================================================================
+// =============================================================================
 // GESTIÓN DE PONDERACIÓN DE BONOS
-// ==============================================================================
+// =============================================================================
 
 /**
- * Obtiene listas únicas de proyectos y colaboradores activos para la tabla de ponderación.
- * @returns {object} Un objeto con { proyectos: [...], trabajadores: [...] }.
+ * Obtiene la matriz completa de datos para la página de ponderación.
+ * Combina colaboradores activos y proyectos de asistencia con los datos guardados en la hoja 'ponderacion'.
+ * @returns {object} Un objeto con { colaboradores: [{id, nombre}, ...], proyectos: [{nombre, ponderaciones: {colabId: valor}}, ...] }.
  */
-function obtenerDatosParaPonderacion() {
+function obtenerDatosPonderacion() {
   try {
     const ss = SpreadsheetApp.openById(getSpreadsheetId());
-    const sheetAsistencia = ss.getSheetByName(HOJA_ASISTENCIA);
     const sheetColaboradores = ss.getSheetByName(HOJA_COLABORADORES);
+    const sheetAsistencia = ss.getSheetByName(HOJA_ASISTENCIA);
+    const sheetPonderacion = ss.getSheetByName(HOJA_PONDERACION);
 
-    // 1. Obtener colaboradores activos
+    // 1. Obtener todos los colaboradores activos (ID y Nombre)
     const colaboradoresData = sheetColaboradores.getDataRange().getValues().slice(1);
-    const trabajadores = colaboradoresData.filter(row => row[6] === 'Activo').map(row => row[1]); // Columna B: NombreCompleto
+    const colaboradoresActivos = colaboradoresData
+      .filter(row => row[6] === 'Activo')
+      .map(row => ({ id: row[0].toString().trim(), nombre: row[1].toString().trim() }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre)); // Ordenar alfabéticamente
 
-    // 2. Obtener proyectos desde registros de asistencia
+    const mapaColaboradoresIdNombre = new Map(colaboradoresActivos.map(c => [c.id, c.nombre]));
+
+    // 2. Obtener todos los proyectos únicos desde RegistrosAsistencia
     const asignaciones = sheetAsistencia.getRange("E2:E").getValues().flat().filter(String);
     const proyectosSet = new Set();
     asignaciones.forEach(asignacion => {
@@ -1504,64 +1511,121 @@ function obtenerDatosParaPonderacion() {
         }
       }
     });
+    const todosLosProyectos = Array.from(proyectosSet).sort();
 
-    const proyectos = Array.from(proyectosSet).sort();
+    // 3. Leer los datos de ponderación existentes
+    const ponderacionesGuardadas = {}; // { proyecto: { nombreColaborador: valor } }
+    if (sheetPonderacion) {
+      const ponderacionData = sheetPonderacion.getDataRange().getValues();
+      if (ponderacionData.length > 1) {
+        const headers = ponderacionData[0].slice(1); // Nombres de colaboradores
+        ponderacionData.slice(1).forEach(row => {
+          const proyecto = row[0];
+          ponderacionesGuardadas[proyecto] = {};
+          headers.forEach((nombreCol, index) => {
+            ponderacionesGuardadas[proyecto][nombreCol] = row[index + 1];
+          });
+        });
+      }
+    }
+    
+    // 4. Construir la matriz final
+    const mapaColaboradoresNombreId = new Map(colaboradoresActivos.map(c => [c.nombre, c.id]));
+    const proyectosResult = todosLosProyectos.map(nombreProyecto => {
+      const ponderaciones = {};
+      colaboradoresActivos.forEach(colab => {
+        const valorGuardado = (ponderacionesGuardadas[nombreProyecto] && ponderacionesGuardadas[nombreProyecto][colab.nombre]) ? ponderacionesGuardadas[nombreProyecto][colab.nombre] : 0;
+        ponderaciones[colab.id] = valorGuardado;
+      });
+      return {
+        nombre: nombreProyecto,
+        ponderaciones: ponderaciones
+      };
+    });
 
-    return { proyectos, trabajadores: trabajadores.sort() };
+    return {
+      colaboradores: colaboradoresActivos,
+      proyectos: proyectosResult
+    };
+
   } catch (e) {
-    console.error("Error en obtenerDatosParaPonderacion:", e);
+    console.error("Error en obtenerDatosPonderacion:", e);
     return { error: e.message };
   }
 }
 
 
 /**
- * Guarda los pesos de ponderación en la hoja 'ponderacion'.
- * @param {object} data - Objeto con la estructura { proyecto: { trabajador: peso, ... } }.
- * @returns {string} Mensaje de resultado.
+ * Guarda o actualiza una fila de ponderación para un proyecto específico.
+ * @param {object} dataFila - Objeto con { nombreProyecto: '...', ponderaciones: { colabId: valor, ... } }.
+ * @returns {object} Un objeto con { success: true/false, message: '...' }.
  */
-function guardarPonderacion(data) {
+function guardarPonderacionFila(dataFila) {
   try {
+    const { nombreProyecto, ponderaciones } = dataFila;
+    if (!nombreProyecto || !ponderaciones) {
+      throw new Error("Datos incompletos. Se requiere nombre del proyecto y ponderaciones.");
+    }
+
     const ss = SpreadsheetApp.openById(getSpreadsheetId());
     let sheet = ss.getSheetByName(HOJA_PONDERACION);
     if (!sheet) {
       sheet = ss.insertSheet(HOJA_PONDERACION);
-    }
-    sheet.clear();
-
-    const proyectos = Object.keys(data);
-    if (proyectos.length === 0) {
-      return "No se recibieron datos para guardar.";
+      sheet.getRange(1, 1).setValue("Proyecto").setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
     }
 
-    // Obtener todos los trabajadores de la data para la cabecera
-    const trabajadoresSet = new Set();
-    proyectos.forEach(p => {
-      Object.keys(data[p]).forEach(t => trabajadoresSet.add(t));
-    });
-    const trabajadores = Array.from(trabajadoresSet).sort();
+    const sheetData = sheet.getDataRange().getValues();
+    const headers = sheetData.length > 0 ? sheetData[0] : ["Proyecto"];
+    
+    // Obtener mapa de ID a Nombre para los headers
+    const sheetColaboradores = ss.getSheetByName(HOJA_COLABORADORES);
+    const colaboradoresData = sheetColaboradores.getDataRange().getValues().slice(1);
+    const mapaIdANombre = new Map(colaboradoresData.map(row => [row[0].toString().trim(), row[1].toString().trim()]));
 
-    // Construir cabecera y filas
-    const header = ['Proyecto', ...trabajadores];
-    const rows = [header];
+    // --- Sincronizar Cabeceras (Columnas) ---
+    const mapaNombreAColumna = new Map(headers.map((h, i) => [h, i + 1]));
+    let headerChanged = false;
+    for (const colabId in ponderaciones) {
+      const nombreColab = mapaIdANombre.get(colabId);
+      if (nombreColab && !mapaNombreAColumna.has(nombreColab)) {
+        const newColIndex = sheet.getLastColumn() + 1;
+        sheet.getRange(1, newColIndex).setValue(nombreColab).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+        mapaNombreAColumna.set(nombreColab, newColIndex);
+        headerChanged = true;
+      }
+    }
+    // Si se añadieron columnas, redimensionar
+    if(headerChanged) sheet.autoResizeColumns(1, sheet.getLastColumn());
 
-    proyectos.forEach(proyecto => {
-      const row = [proyecto];
-      trabajadores.forEach(trabajador => {
-        const peso = data[proyecto][trabajador] || 0;
-        row.push(peso);
-      });
-      rows.push(row);
-    });
 
-    // Escribir en la hoja
-    sheet.getRange(1, 1, rows.length, header.length).setValues(rows);
-    sheet.getRange(1, 1, 1, header.length).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
-    sheet.autoResizeColumns(1, header.length);
+    // --- Preparar la Fila de Datos ---
+    const filaParaGuardar = new Array(mapaNombreAColumna.size).fill(0);
+    filaParaGuardar[0] = nombreProyecto;
 
-    return "Pesos de ponderación guardados correctamente.";
+    for (const colabId in ponderaciones) {
+        const nombreColab = mapaIdANombre.get(colabId);
+        if (nombreColab && mapaNombreAColumna.has(nombreColab)) {
+            const colIdx = mapaNombreAColumna.get(nombreColab);
+            filaParaGuardar[colIdx - 1] = ponderaciones[colabId] || 0;
+        }
+    }
+    
+    // --- Encontrar y Actualizar/Insertar Fila ---
+    const proyectosEnHoja = sheet.getRange(2, 1, sheet.getLastRow() > 1 ? sheet.getLastRow() - 1 : 1).getValues().flat();
+    const rowIndex = proyectosEnHoja.findIndex(p => p === nombreProyecto);
+
+    if (rowIndex !== -1 && proyectosEnHoja[0] !== '') {
+      // Actualizar fila existente
+      const rowNum = rowIndex + 2; // +1 por 0-based, +1 por header
+      sheet.getRange(rowNum, 1, 1, filaParaGuardar.length).setValues([filaParaGuardar]);
+    } else {
+      // Añadir nueva fila
+      sheet.appendRow(filaParaGuardar);
+    }
+
+    return { success: true, message: "Ponderación guardada correctamente." };
   } catch (e) {
-    console.error("Error en guardarPonderacion:", e);
-    return `Error al guardar: ${e.message}`;
+    console.error("Error en guardarPonderacionFila:", e);
+    return { success: false, message: `Error al guardar: ${e.message}` };
   }
 }
