@@ -11,6 +11,7 @@
     }
     .table-responsive {
       max-height: 70vh;
+      overflow: auto;
     }
     .btn-action-cell {
       min-width: 180px; /* Espacio para los 3 botones */
@@ -66,8 +67,8 @@
           <!-- La tabla de resultados se insertará aquí -->
         </div>
       </div>
-      <div class="card-footer text-center" style="display: none;">
-        <button id="btn-guardar-bonos" class="btn btn-primary">Guardar Bonos a Pagar</button>
+      <div class="card-footer text-center">
+        <button id="btn-guardar-bonos" class="btn btn-primary">Guardar en Hoja</button>
       </div>
     </div>
   </div>
@@ -341,9 +342,6 @@ function renderResultadosTabla(matrizBonos, proyectos, colaboradores) {
     datosTablaResultados = [headerRow, ...dataRows, footerRow];
 
     container.innerHTML = tableHtml;
-    
-    // Mostrar el pie de página de la tarjeta que contiene el botón
-    document.querySelector('#resultados-card .card-footer').style.display = 'block';
 }
 
 function handleResultadosCardClick(event) {
@@ -371,12 +369,12 @@ function guardarBonosEnHoja() {
                 showPonderacionMessage(response.message, 'error');
             }
             btn.disabled = false;
-            btn.textContent = 'Guardar Bonos a Pagar';
+            btn.textContent = 'Guardar en Hoja';
         })
         .withFailureHandler(error => {
             showPonderacionMessage(`Error al guardar: ${error.message}`, 'error');
             btn.disabled = false;
-            btn.textContent = 'Guardar Bonos a Pagar';
+            btn.textContent = 'Guardar en Hoja';
         })
         .guardarBonosAPagar(datosTablaResultados);
 }
