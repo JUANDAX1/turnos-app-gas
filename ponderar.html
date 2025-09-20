@@ -5,12 +5,12 @@
   <style><?!= include('styles.html'); ?></style>
   <style>
     /* Estilos adicionales específicos para esta página */
-    .input-ponderacion {
-      width: 80px;
+    .input-ponderacion, .bono-proyecto-input {
+      width: 100px;
       text-align: center;
     }
     .table-responsive {
-      max-height: 75vh;
+      max-height: 70vh;
     }
     .btn-action-cell {
       min-width: 180px; /* Espacio para los 3 botones */
@@ -27,6 +27,10 @@
       z-index: 1;
       background-color: #f8f9fa;
     }
+    .bono-total-col {
+        font-weight: bold;
+        background-color: #e8f4f8;
+    }
   </style>
 </head>
 <body>
@@ -34,8 +38,8 @@
   <div class="container-fluid mt-3">
     <div class="card">
       <div class="card-header">
-        <h3>Gestión de Ponderaciones por Proyecto</h3>
-        <p class="card-subtitle text-muted">Defina el peso (0-100) de cada colaborador en los proyectos. Use el botón "Editar" en cada fila para modificar los valores.</p>
+        <h3>Gestión de Ponderaciones y Cálculo de Bonos</h3>
+        <p class="card-subtitle text-muted">1. Defina los pesos y el bono a repartir por proyecto. 2. Calcule los bonos.</p>
       </div>
       <div class="card-body">
         <div id="ponderacion-messages"></div>
@@ -48,41 +52,44 @@
           </div>
         </div>
       </div>
+      <div class="card-footer text-center">
+        <button id="btn-calcular-bonos" class="btn btn-success btn-lg">Calcular Bonos</button>
+      </div>
+    </div>
+
+    <div id="resultados-card" class="card mt-4" style="display: none;">
+        <div class="card-header">
+            <h3>Resultados del Cálculo de Bonos</h3>
+        </div>
+        <div class="card-body">
+            <div id="tabla-resultados-container" class="table-responsive"></div>
+        </div>
     </div>
   </div>
 
 <script>
+let datosPonderacionGlobal = null; // Almacenar datos para el cálculo
+
 document.addEventListener("DOMContentLoaded", function() {
   cargarVistaPonderacion();
   
-  // Adjuntar el listener de eventos al contenedor de la tabla
   document.getElementById('ponderacion-table-container').addEventListener('click', handlePonderacionTableClick);
+  document.getElementById('btn-calcular-bonos').addEventListener('click', iniciarCalculoBonos);
 });
 
-/**
- * Muestra un mensaje al usuario en un contenedor específico.
- */
-function showPonderacionMessage(message, type) {
+function showPonderacionMessage(message, type, duration = 4000) {
   const container = document.getElementById('ponderacion-messages');
   if (container) {
-    const alertType = type === 'success' ? 'alert-success' : 'alert-danger';
+    const alertType = type === 'success' ? 'alert-success' : (type === 'info' ? 'alert-info' : 'alert-danger');
     container.innerHTML = `<div class="alert ${alertType}" role="alert">${message}</div>`;
-    if (type === 'success') {
-      setTimeout(() => { container.innerHTML = ''; }, 4000);
+    if (type !== 'error') {
+      setTimeout(() => { container.innerHTML = ''; }, duration);
     }
   }
 }
 
-/**
- * Inicia la carga de datos desde el backend.
- */
 function cargarVistaPonderacion() {
-  document.getElementById('ponderacion-table-container').innerHTML = `
-    <div class="text-center p-4">
-      <div class="spinner-border text-primary" role="status"><span class="sr-only">Cargando...</span></div>
-      <p class="mt-2">Cargando datos de ponderación...</p>
-    </div>`;
-  
+  showPonderacionMessage('Cargando datos de ponderación...', 'info', 10000);
   google.script.run
     .withSuccessHandler(renderPonderacionTabla)
     .withFailureHandler(error => {
@@ -92,11 +99,10 @@ function cargarVistaPonderacion() {
     .obtenerDatosPonderacion();
 }
 
-/**
- * Renderiza la tabla de ponderaciones con los datos del backend.
- */
 function renderPonderacionTabla(data) {
+  datosPonderacionGlobal = data; // Guardar datos globalmente
   const container = document.getElementById('ponderacion-table-container');
+  
   if (data.error) {
     showPonderacionMessage(`Error: ${data.error}`, 'error');
     container.innerHTML = '';
@@ -106,7 +112,7 @@ function renderPonderacionTabla(data) {
     container.innerHTML = '<div class="alert alert-info">No se encontraron proyectos con registros de asistencia.</div>';
     return;
   }
-   if (!data.colaboradores || data.colaboradores.length === 0) {
+  if (!data.colaboradores || data.colaboradores.length === 0) {
     container.innerHTML = '<div class="alert alert-info">No hay colaboradores activos para mostrar.</div>';
     return;
   }
@@ -115,21 +121,20 @@ function renderPonderacionTabla(data) {
   data.colaboradores.forEach(c => {
     tableHtml += `<th>${c.nombre}</th>`;
   });
-  tableHtml += '<th class="btn-action-cell">Acciones</th></tr></thead><tbody>';
+  tableHtml += '<th>Bono Proyecto ($)</th><th class="btn-action-cell">Acciones</th></tr></thead><tbody>';
 
   data.proyectos.forEach(p => {
     tableHtml += `<tr data-proyecto-nombre="${p.nombre}">`;
     tableHtml += `<td>${p.nombre}</td>`;
     data.colaboradores.forEach(c => {
       const valor = p.ponderaciones[c.id] || 0;
-      tableHtml += `
-        <td>
+      tableHtml += `<td>
           <span class="valor-ponderacion">${valor}</span>
           <input type="number" class="form-control input-ponderacion" style="display:none;" value="${valor}" data-colab-id="${c.id}" min="0" max="100">
         </td>`;
     });
-    tableHtml += `
-      <td class="btn-action-cell">
+    tableHtml += `<td><input type="number" class="form-control bono-proyecto-input" placeholder="Ej: 200000" min="0"></td>`;
+    tableHtml += `<td class="btn-action-cell">
         <button class="btn btn-sm btn-primary btn-edit-ponderacion">Editar</button>
         <button class="btn btn-sm btn-success btn-save-ponderacion" style="display:none;">Guardar</button>
         <button class="btn btn-sm btn-secondary btn-cancel-ponderacion" style="display:none;">Cancelar</button>
@@ -139,28 +144,19 @@ function renderPonderacionTabla(data) {
 
   tableHtml += '</tbody></table>';
   container.innerHTML = tableHtml;
+  showPonderacionMessage('Datos cargados. Defina los pesos y bonos.', 'success');
 }
 
-/**
- * Maneja los clics en los botones de la tabla.
- */
 function handlePonderacionTableClick(event) {
   const target = event.target;
   const row = target.closest('tr');
   if (!row) return;
 
-  if (target.classList.contains('btn-edit-ponderacion')) {
-    togglePonderacionRow(row, true);
-  } else if (target.classList.contains('btn-save-ponderacion')) {
-    guardarFilaPonderacion(row);
-  } else if (target.classList.contains('btn-cancel-ponderacion')) {
-    togglePonderacionRow(row, false);
-  }
+  if (target.classList.contains('btn-edit-ponderacion')) togglePonderacionRow(row, true);
+  else if (target.classList.contains('btn-save-ponderacion')) guardarFilaPonderacion(row);
+  else if (target.classList.contains('btn-cancel-ponderacion')) togglePonderacionRow(row, false);
 }
 
-/**
- * Cambia una fila entre modo de vista y modo de edición.
- */
 function togglePonderacionRow(row, isEditing) {
   const spans = row.querySelectorAll('.valor-ponderacion');
   const inputs = row.querySelectorAll('.input-ponderacion');
@@ -172,7 +168,7 @@ function togglePonderacionRow(row, isEditing) {
     spans.forEach((span, index) => {
       span.style.display = 'none';
       inputs[index].style.display = 'block';
-      inputs[index].value = span.textContent; // Asegurar que el input tiene el valor actual
+      inputs[index].value = span.textContent;
     });
     btnEdit.style.display = 'none';
     btnSave.style.display = 'inline-block';
@@ -186,9 +182,6 @@ function togglePonderacionRow(row, isEditing) {
   }
 }
 
-/**
- * Recopila datos de una fila y los envía al backend para guardarlos.
- */
 function guardarFilaPonderacion(row) {
   const btnSave = row.querySelector('.btn-save-ponderacion');
   btnSave.disabled = true;
@@ -200,18 +193,14 @@ function guardarFilaPonderacion(row) {
     ponderaciones[input.dataset.colabId] = parseInt(input.value, 10) || 0;
   });
 
-  const dataFila = { nombreProyecto, ponderaciones };
-
   google.script.run
     .withSuccessHandler(response => {
       btnSave.disabled = false;
       btnSave.textContent = 'Guardar';
       if (response.success) {
         showPonderacionMessage(`Ponderaciones para '${nombreProyecto}' guardadas.`, 'success');
-        // Actualizar los spans con los nuevos valores
         row.querySelectorAll('.input-ponderacion').forEach(input => {
-          const span = input.closest('td').querySelector('.valor-ponderacion');
-          span.textContent = input.value;
+          input.closest('td').querySelector('.valor-ponderacion').textContent = input.value;
         });
         togglePonderacionRow(row, false);
       } else {
@@ -223,8 +212,106 @@ function guardarFilaPonderacion(row) {
       btnSave.textContent = 'Guardar';
       showPonderacionMessage(`Error al guardar: ${error.message}`, 'error');
     })
-    .guardarPonderacionFila(dataFila);
+    .guardarPonderacionFila({ nombreProyecto, ponderaciones });
 }
+
+// --- LÓGICA DE CÁLCULO DE BONOS ---
+
+function iniciarCalculoBonos() {
+  showPonderacionMessage('Iniciando cálculo... Obteniendo días trabajados.', 'info', 10000);
+  document.getElementById('btn-calcular-bonos').disabled = true;
+
+  google.script.run
+    .withSuccessHandler(diasTrabajados => {
+        if (diasTrabajados.error) {
+            showPonderacionMessage(`Error al obtener días trabajados: ${diasTrabajados.error}`, 'error');
+            document.getElementById('btn-calcular-bonos').disabled = false;
+            return;
+        }
+        calcularYRenderizarBonos(diasTrabajados);
+    })
+    .withFailureHandler(err => {
+        showPonderacionMessage(`Error al llamar al backend: ${err.message}`, 'error');
+        document.getElementById('btn-calcular-bonos').disabled = false;
+    })
+    .obtenerDiasTrabajadosBonos();
+}
+
+function calcularYRenderizarBonos(diasTrabajados) {
+    showPonderacionMessage('Calculando bonos...', 'info', 10000);
+
+    // 1. Recolectar pesos y bonos fijos desde la UI
+    const pesosAsignados = datosPonderacionGlobal.proyectos;
+    const bonosPorProyecto = {};
+    document.querySelectorAll('#ponderacion-table-container tbody tr').forEach(row => {
+        const nombreProyecto = row.dataset.proyectoNombre;
+        const bonoInput = row.querySelector('.bono-proyecto-input');
+        bonosPorProyecto[nombreProyecto] = parseFloat(bonoInput.value) || 0;
+    });
+
+    // 2. Lógica de Cálculo
+    const resultados = {}; // { colabId: { nombre: '...', bonos: { proj1: 100, proj2: 50 }, total: 150 } }
+    const colaboradores = datosPonderacionGlobal.colaboradores;
+    colaboradores.forEach(c => {
+        resultados[c.id] = { nombre: c.nombre, bonos: {}, total: 0 };
+    });
+
+    pesosAsignados.forEach(proyecto => {
+        const nombreProyecto = proyecto.nombre;
+        const bonoFijo = bonosPorProyecto[nombreProyecto] || 0;
+        if (bonoFijo === 0) return; // Si no hay bono para el proyecto, saltarlo
+
+        let totalPuntosProyecto = 0;
+        const puntosPonderados = {}; // { colabId: puntos }
+
+        colaboradores.forEach(colab => {
+            const dias = (diasTrabajados[nombreProyecto] && diasTrabajados[nombreProyecto][colab.id]) ? diasTrabajados[nombreProyecto][colab.id] : 0;
+            const peso = proyecto.ponderaciones[colab.id] || 0;
+            const puntos = dias * peso;
+            puntosPonderados[colab.id] = puntos;
+            totalPuntosProyecto += puntos;
+        });
+
+        if (totalPuntosProyecto > 0) {
+            colaboradores.forEach(colab => {
+                const bono = (puntosPonderados[colab.id] / totalPuntosProyecto) * bonoFijo;
+                resultados[colab.id].bonos[nombreProyecto] = bono;
+                resultados[colab.id].total += bono;
+            });
+        }
+    });
+
+    // 3. Renderizar tabla de resultados
+    renderResultadosTabla(resultados, pesosAsignados.map(p => p.nombre));
+    document.getElementById('btn-calcular-bonos').disabled = false;
+    showPonderacionMessage('Cálculo de bonos completado.', 'success');
+}
+
+function renderResultadosTabla(resultados, proyectos) {
+    const container = document.getElementById('tabla-resultados-container');
+    document.getElementById('resultados-card').style.display = 'block';
+
+    let tableHtml = '<table class="table table-striped table-hover table-sm"><thead><tr><th>Trabajador</th>';
+    proyectos.forEach(p => {
+        tableHtml += `<th>Bono ${p}</th>`;
+    });
+    tableHtml += '<th class="bono-total-col">Bono Total</th></tr></thead><tbody>';
+
+    for (const colabId in resultados) {
+        const data = resultados[colabId];
+        tableHtml += `<tr><td>${data.nombre}</td>`;
+        proyectos.forEach(p => {
+            const bono = data.bonos[p] || 0;
+            tableHtml += `<td>$${bono.toFixed(2)}</td>`;
+        });
+        tableHtml += `<td class="bono-total-col">$${data.total.toFixed(2)}</td>`;
+        tableHtml += '</tr>';
+    }
+
+    tableHtml += '</tbody></table>';
+    container.innerHTML = tableHtml;
+}
+
 </script>
 
 </body>

@@ -1205,32 +1205,59 @@ function generarValeCaja(movimiento, colaborador) {
  * Úsala desde el editor de Apps Script para forzar la pantalla de autorización
  * y verificar que la generación de documentos y PDFs funciona correctamente.
  */
-function pruebaGenerarValeMock() {
-  const movimientoMock = {
-    idColaborador: 'MOCK123',
-    tipoMovimiento: 'salida',
-    tipoRegistro: 'GASTO',
-    monto: 123.45,
-    detalle: 'Gasto de prueba generado por pruebaGenerarValeMock'
-  };
+/**
+ * Obtiene los días trabajados por proyecto y colaborador desde la hoja 'Bonificaciones'.
+ * La cabecera de la hoja debe tener el formato 'Nombre (ID)'.
+ * @returns {object} Objeto con la estructura { [nombreProyecto]: { [idColaborador]: dias } }
+ */
+function obtenerDiasTrabajadosBonos() {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_BONIFICACIONES);
+    if (!sheet) {
+      // Si la hoja no existe, podría ser porque aún no se ha corrido el cálculo de bonificaciones.
+      // Devolver un objeto vacío es un caso manejable en el frontend.
+      return {}; 
+    }
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) {
+      return {}; // No hay datos
+    }
 
-  // Buscamos un colaborador real en la hoja; si no existe, usamos un nombre genérico
-  const ss = SpreadsheetApp.openById(getSpreadsheetId());
-  const sheetCol = ss.getSheetByName(HOJA_COLABORADORES);
-  const dataCol = sheetCol.getDataRange().getValues();
-  let colaborador = null;
-  if (dataCol.length > 1) {
-    // Tomar el primer colaborador real
-    colaborador = [dataCol[1][0], dataCol[1][1]];
-    movimientoMock.idColaborador = dataCol[1][0];
-  } else {
-    colaborador = [movimientoMock.idColaborador, 'Colaborador de Prueba'];
+    const headers = data[0];
+    const mapaColaboradores = {}; // Mapa de indice de columna a ID de colaborador
+
+    // Procesar cabeceras para extraer IDs de colaboradores
+    // Se asume formato "Nombre (ID)" a partir de la segunda columna
+    for (let i = 1; i < headers.length; i++) {
+      const header = headers[i];
+      const match = header.match(/\(([^)]+)\)$/); // Extraer contenido del paréntesis al final
+      if (match && match[1]) {
+        mapaColaboradores[i] = match[1].trim(); // { "1": "C001", "2": "C002", ... }
+      }
+    }
+
+    const diasTrabajados = {};
+    // Procesar filas de datos
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      const nombreProyecto = row[0];
+      if (!nombreProyecto) continue; // Omitir filas sin nombre de proyecto
+
+      diasTrabajados[nombreProyecto] = {};
+      for (let j = 1; j < row.length; j++) {
+        const colabId = mapaColaboradores[j];
+        if (colabId) {
+          diasTrabajados[nombreProyecto][colabId] = Number(row[j]) || 0;
+        }
+      }
+    }
+
+    return diasTrabajados;
+  } catch (e) {
+    console.error("Error en obtenerDiasTrabajadosBonos:", e);
+    return { error: e.message };
   }
-
-  // Llamar a generarValeCaja directamente para forzar la creación del Doc
-  const resultado = generarValeCaja(movimientoMock, colaborador);
-  Logger.log('Resultado pruebaGenerarValeMock: %s', JSON.stringify(resultado));
-  return resultado;
 }
 
 /**
