@@ -1656,3 +1656,50 @@ function guardarPonderacionFila(dataFila) {
     return { success: false, message: `Error al guardar: ${e.message}` };
   }
 }
+
+/**
+ * Guarda los resultados del cálculo de bonos en una nueva hoja llamada 'Bonos a Pagar'.
+ * @param {Array<Array<string>>} dataTabla - Un array 2D con los datos de la tabla de resultados.
+ * @returns {object} Un objeto con { success: true/false, message: '...' }.
+ */
+function guardarBonosAPagar(dataTabla) {
+  try {
+    if (!dataTabla || dataTabla.length === 0) {
+      throw new Error("No se recibieron datos para guardar.");
+    }
+
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const nombreHoja = "Bonos a Pagar";
+    let sheet = ss.getSheetByName(nombreHoja);
+
+    if (sheet) {
+      sheet.clear();
+    } else {
+      sheet = ss.insertSheet(nombreHoja);
+    }
+
+    const numRows = dataTabla.length;
+    const numCols = dataTabla[0].length;
+
+    // Escribir todos los datos de una vez
+    sheet.getRange(1, 1, numRows, numCols).setValues(dataTabla);
+
+    // --- Aplicar Formato ---
+    // Formato de cabecera
+    sheet.getRange(1, 1, 1, numCols).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+    // Formato de fila de totales
+    sheet.getRange(numRows, 1, 1, numCols).setBackground("#f0f0f0").setFontWeight("bold");
+    // Formato de columna de totales
+     sheet.getRange(1, numCols, numRows, 1).setFontWeight("bold");
+
+    // Formato de moneda para los valores numéricos (evitando cabeceras y primera columna)
+    sheet.getRange(2, 2, numRows - 1, numCols - 1).setNumberFormat('$#,##0.00');
+    
+    sheet.autoResizeColumns(1, numCols);
+
+    return { success: true, message: `Resultados guardados correctamente en la hoja '${nombreHoja}'.` };
+  } catch (e) {
+    console.error("Error en guardarBonosAPagar:", e);
+    return { success: false, message: `Error al guardar en la hoja de cálculo: ${e.message}` };
+  }
+}

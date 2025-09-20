@@ -58,23 +58,30 @@
     </div>
 
     <div id="resultados-card" class="card mt-4" style="display: none;">
-        <div class="card-header">
-            <h3>Resultados del Cálculo de Bonos</h3>
+      <div class="card-header">
+        <h3>Resultados del Cálculo de Bonos</h3>
+      </div>
+      <div class="card-body">
+        <div id="tabla-resultados-container" class="table-responsive" style="overflow: auto;">
+          <!-- La tabla de resultados se insertará aquí -->
         </div>
-        <div class="card-body">
-            <div id="tabla-resultados-container" class="table-responsive"></div>
-        </div>
+      </div>
+      <div class="card-footer text-center" style="display: none;">
+        <button id="btn-guardar-bonos" class="btn btn-primary">Guardar Bonos a Pagar</button>
+      </div>
     </div>
   </div>
 
 <script>
 let datosPonderacionGlobal = null; // Almacenar datos para el cálculo
+let datosTablaResultados = null; // Almacenar datos de la tabla de resultados para poder guardarlos
 
 document.addEventListener("DOMContentLoaded", function() {
   cargarVistaPonderacion();
   
   document.getElementById('ponderacion-table-container').addEventListener('click', handlePonderacionTableClick);
   document.getElementById('btn-calcular-bonos').addEventListener('click', iniciarCalculoBonos);
+  document.getElementById('resultados-card').addEventListener('click', handleResultadosCardClick);
 });
 
 function showPonderacionMessage(message, type, duration = 4000) {
@@ -240,7 +247,6 @@ function iniciarCalculoBonos() {
 function calcularYRenderizarBonos(diasTrabajados) {
     showPonderacionMessage('Calculando bonos...', 'info', 10000);
 
-    // 1. Recolectar pesos y bonos fijos desde la UI
     const pesosAsignados = datosPonderacionGlobal.proyectos;
     const bonosPorProyecto = {};
     document.querySelectorAll('#ponderacion-table-container tbody tr').forEach(row => {
@@ -249,24 +255,23 @@ function calcularYRenderizarBonos(diasTrabajados) {
         bonosPorProyecto[nombreProyecto] = parseFloat(bonoInput.value) || 0;
     });
 
-    // 2. Lógica de Cálculo
-    const resultados = {}; // { colabId: { nombre: '...', bonos: { proj1: 100, proj2: 50 }, total: 150 } }
-    const colaboradores = datosPonderacionGlobal.colaboradores;
-    colaboradores.forEach(c => {
-        resultados[c.id] = { nombre: c.nombre, bonos: {}, total: 0 };
-    });
+    const colaboradores = datosPonderacionGlobal.colaboradores; // Ya están ordenados alfabéticamente
+    const proyectos = pesosAsignados.map(p => p.nombre);
+    const matrizBonos = {}; // { [nombreProyecto]: { [colabId]: bono } }
 
-    pesosAsignados.forEach(proyecto => {
-        const nombreProyecto = proyecto.nombre;
+    proyectos.forEach(nombreProyecto => {
+        matrizBonos[nombreProyecto] = {};
         const bonoFijo = bonosPorProyecto[nombreProyecto] || 0;
-        if (bonoFijo === 0) return; // Si no hay bono para el proyecto, saltarlo
+        const proyectoData = pesosAsignados.find(p => p.nombre === nombreProyecto);
+
+        if (bonoFijo === 0 || !proyectoData) return; // Si no hay bono o datos del proyecto, saltar.
 
         let totalPuntosProyecto = 0;
-        const puntosPonderados = {}; // { colabId: puntos }
+        const puntosPonderados = {};
 
         colaboradores.forEach(colab => {
             const dias = (diasTrabajados[nombreProyecto] && diasTrabajados[nombreProyecto][colab.id]) ? diasTrabajados[nombreProyecto][colab.id] : 0;
-            const peso = proyecto.ponderaciones[colab.id] || 0;
+            const peso = proyectoData.ponderaciones[colab.id] || 0;
             const puntos = dias * peso;
             puntosPonderados[colab.id] = puntos;
             totalPuntosProyecto += puntos;
@@ -275,41 +280,105 @@ function calcularYRenderizarBonos(diasTrabajados) {
         if (totalPuntosProyecto > 0) {
             colaboradores.forEach(colab => {
                 const bono = (puntosPonderados[colab.id] / totalPuntosProyecto) * bonoFijo;
-                resultados[colab.id].bonos[nombreProyecto] = bono;
-                resultados[colab.id].total += bono;
+                matrizBonos[nombreProyecto][colab.id] = bono;
             });
         }
     });
 
-    // 3. Renderizar tabla de resultados
-    renderResultadosTabla(resultados, pesosAsignados.map(p => p.nombre));
+    renderResultadosTabla(matrizBonos, proyectos, colaboradores);
     document.getElementById('btn-calcular-bonos').disabled = false;
     showPonderacionMessage('Cálculo de bonos completado.', 'success');
 }
 
-function renderResultadosTabla(resultados, proyectos) {
+function renderResultadosTabla(matrizBonos, proyectos, colaboradores) {
     const container = document.getElementById('tabla-resultados-container');
     document.getElementById('resultados-card').style.display = 'block';
 
-    let tableHtml = '<table class="table table-striped table-hover table-sm"><thead><tr><th>Trabajador</th>';
-    proyectos.forEach(p => {
-        tableHtml += `<th>Bono ${p}</th>`;
+    const totalesColaborador = new Array(colaboradores.length).fill(0);
+    let granTotal = 0;
+
+    let tableHtml = '<table class="table table-striped table-hover table-sm"><thead><tr><th>Proyecto</th>';
+    colaboradores.forEach(c => {
+        tableHtml += `<th>${c.nombre}</th>`;
     });
-    tableHtml += '<th class="bono-total-col">Bono Total</th></tr></thead><tbody>';
+    tableHtml += '<th class="bono-total-col">Total Proyecto</th></tr></thead><tbody>';
 
-    for (const colabId in resultados) {
-        const data = resultados[colabId];
-        tableHtml += `<tr><td>${data.nombre}</td>`;
-        proyectos.forEach(p => {
-            const bono = data.bonos[p] || 0;
-            tableHtml += `<td>$${bono.toFixed(2)}</td>`;
+    proyectos.forEach(p => {
+        let totalProyecto = 0;
+        tableHtml += `<tr><td><strong>${p}</strong></td>`;
+        colaboradores.forEach((c, index) => {
+            const bono = (matrizBonos[p] && matrizBonos[p][c.id]) ? matrizBonos[p][c.id] : 0;
+            tableHtml += `<td>${bono.toFixed(2)}</td>`;
+            totalProyecto += bono;
+            totalesColaborador[index] += bono;
         });
-        tableHtml += `<td class="bono-total-col">$${data.total.toFixed(2)}</td>`;
+        granTotal += totalProyecto;
+        tableHtml += `<td class="bono-total-col">${totalProyecto.toFixed(2)}</td>`;
         tableHtml += '</tr>';
-    }
+    });
 
-    tableHtml += '</tbody></table>';
+    tableHtml += '</tbody><tfoot><tr class="table-secondary"><td><strong>Total Colaborador</strong></td>';
+    totalesColaborador.forEach(total => {
+        tableHtml += `<td><strong>${total.toFixed(2)}</strong></td>`;
+    });
+    tableHtml += `<td class="bono-total-col"><strong>${granTotal.toFixed(2)}</strong></td>`;
+    tableHtml += '</tr></tfoot></table>';
+    
+    // Guardar datos para la exportación
+    const headerRow = ['Proyecto', ...colaboradores.map(c => c.nombre), 'Total Proyecto'];
+    const dataRows = proyectos.map(p => {
+        const row = [p];
+        let totalProyecto = 0;
+        colaboradores.forEach(c => {
+            const bono = (matrizBonos[p] && matrizBonos[p][c.id]) ? matrizBonos[p][c.id] : 0;
+            row.push(bono.toFixed(2));
+            totalProyecto += bono;
+        });
+        row.push(totalProyecto.toFixed(2));
+        return row;
+    });
+    const footerRow = ['Total Colaborador', ...totalesColaborador.map(t => t.toFixed(2)), granTotal.toFixed(2)];
+    datosTablaResultados = [headerRow, ...dataRows, footerRow];
+
     container.innerHTML = tableHtml;
+    
+    // Mostrar el pie de página de la tarjeta que contiene el botón
+    document.querySelector('#resultados-card .card-footer').style.display = 'block';
+}
+
+function handleResultadosCardClick(event) {
+    if (event.target.id === 'btn-guardar-bonos') {
+        guardarBonosEnHoja();
+    }
+}
+
+function guardarBonosEnHoja() {
+    if (!datosTablaResultados) {
+        showPonderacionMessage('No hay datos de resultados para guardar.', 'error');
+        return;
+    }
+    const btn = document.getElementById('btn-guardar-bonos');
+    btn.disabled = true;
+    btn.textContent = 'Guardando...';
+
+    showPonderacionMessage('Guardando resultados en la hoja de cálculo...', 'info', 10000);
+
+    google.script.run
+        .withSuccessHandler(response => {
+            if (response.success) {
+                showPonderacionMessage(response.message, 'success');
+            } else {
+                showPonderacionMessage(response.message, 'error');
+            }
+            btn.disabled = false;
+            btn.textContent = 'Guardar Bonos a Pagar';
+        })
+        .withFailureHandler(error => {
+            showPonderacionMessage(`Error al guardar: ${error.message}`, 'error');
+            btn.disabled = false;
+            btn.textContent = 'Guardar Bonos a Pagar';
+        })
+        .guardarBonosAPagar(datosTablaResultados);
 }
 
 </script>
