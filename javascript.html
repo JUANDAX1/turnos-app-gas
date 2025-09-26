@@ -511,14 +511,20 @@ function solicitarEliminarRegistroFromButton(btn) {
 function registrarProyecto(event) {
   event.preventDefault();
   const proyecto = {
-    project_code: document.getElementById('project_code').value,
-    project_name: document.getElementById('project_name').value,
-    registration_date: document.getElementById('registration_date').value,
-    project_address: document.getElementById('project_address').value,
-    project_georeference: document.getElementById('project_georeference').value,
-    project_contact: document.getElementById('project_contact').value,
-    project_observation: document.getElementById('project_observation').value
-  };
+  project_code: document.getElementById('project_code').value,
+  project_name: document.getElementById('project_name').value,
+  registration_date: document.getElementById('registration_date').value,
+  client_name: document.getElementById('client_name').value,
+  client_rut: document.getElementById('client_rut').value,
+  project_stage: document.getElementById('project_stage').value,
+  project_status: document.getElementById('project_status').value,
+  client_phone: document.getElementById('client_phone').value,
+  contact_phone: document.getElementById('contact_phone').value,
+  project_address: document.getElementById('project_address').value,
+  project_georeference: document.getElementById('project_georeference').value,
+  project_contact: document.getElementById('project_contact').value,
+  project_observation: document.getElementById('project_observation').value
+};
 
   showMessage('msgProyecto', 'Registrando proyecto...', 'info');
   google.script.run
@@ -566,7 +572,13 @@ function cargarProyectos() {
             <tr>
               <th>Código</th>
               <th>Nombre</th>
+              <th>Estado</th>
               <th>Fecha Registro</th>
+              <th>Cliente</th>
+              <th>RUT Cliente</th>
+              <th>Etapa</th>
+              <th>Tel. Cliente</th>
+              <th>Tel. Contacto</th>
               <th>Dirección</th>
               <th>Georeferencia</th>
               <th>Contacto</th>
@@ -577,21 +589,26 @@ function cargarProyectos() {
           <tbody>
       `;
       data.forEach(proyecto => {
-        const obsEscapadas = proyecto.project_observation.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const statusClass = proyecto.project_status === 'Proyecto Activo' ? 'status-active' : 
+                          proyecto.project_status === 'Proyecto Cerrado' ? 'status-closed' : 'status-scheduled';
         table += `
-          <tr>
+          <tr data-status="${proyecto.project_status}">
             <td>${proyecto.project_code}</td>
             <td>${proyecto.project_name}</td>
+            <td><span class="status-badge ${statusClass}">${proyecto.project_status}</span></td>
             <td>${proyecto.registration_date}</td>
+            <td>${proyecto.client_name}</td>
+            <td>${proyecto.client_rut}</td>
+            <td>${proyecto.project_stage}</td>
+            <td>${proyecto.client_phone}</td>
+            <td>${proyecto.contact_phone}</td>
             <td>${proyecto.project_address}</td>
             <td>${proyecto.project_georeference}</td>
             <td>${proyecto.project_contact}</td>
             <td>${proyecto.project_observation}</td>
             <td>
-              <div class="actions">
-                <button class="btn btn-secondary" onclick="editarProyecto('${proyecto.project_code}')">Editar</button>
-                <button class="btn btn-danger" onclick="eliminarProyecto('${proyecto.project_code}')">Eliminar</button>
-              </div>
+              <button class="btn btn-secondary" onclick="editarProyecto('${proyecto.project_code}')">Editar</button>
+              <button class="btn btn-danger" onclick="eliminarProyecto('${proyecto.project_code}')">Eliminar</button>
             </td>
           </tr>
         `;
@@ -608,25 +625,54 @@ function cargarProyectos() {
 
 function editarProyecto(projectCode) {
   const rows = document.querySelectorAll('#tablaProyectos table tbody tr');
-  const tableRow = Array.from(rows).find(row => row.cells[0].textContent === projectCode);
-  if (!tableRow) return;
+  let targetRow = null;
+  
+  rows.forEach(row => {
+    if (row.cells[0].textContent.trim() === projectCode) {
+      targetRow = row;
+    }
+  });
+  
+  if (!targetRow) {
+    alert('No se pudo encontrar el proyecto para editar');
+    return;
+  }
 
-  const cells = tableRow.cells;
-  document.getElementById('project_code').value = cells[0].textContent;
-  document.getElementById('project_name').value = cells[1].textContent;
-  document.getElementById('registration_date').value = cells[2].textContent;
-  document.getElementById('project_address').value = cells[3].textContent;
-  document.getElementById('project_georeference').value = cells[4].textContent;
-  document.getElementById('project_contact').value = cells[5].textContent;
-  document.getElementById('project_observation').value = cells[6].textContent;
+  const cells = targetRow.cells;
+  
+  // Asignar valores según el orden actual de columnas
+  document.getElementById('project_code').value = cells[0].textContent.trim();
+  document.getElementById('project_name').value = cells[1].textContent.trim();
+  
+  // Extraer el texto del span con clase status-badge
+  const statusBadge = cells[2].querySelector('.status-badge');
+  const statusValue = statusBadge ? statusBadge.textContent.trim() : 'Proyecto Activo';
+  document.getElementById('project_status').value = statusValue;
+  
+  document.getElementById('registration_date').value = cells[3].textContent.trim();
+  document.getElementById('client_name').value = cells[4].textContent.trim();
+  document.getElementById('client_rut').value = cells[5].textContent.trim();
+  document.getElementById('project_stage').value = cells[6].textContent.trim();
+  document.getElementById('client_phone').value = cells[7].textContent.trim();
+  document.getElementById('contact_phone').value = cells[8].textContent.trim();
+  document.getElementById('project_address').value = cells[9].textContent.trim();
+  document.getElementById('project_georeference').value = cells[10].textContent.trim();
+  document.getElementById('project_contact').value = cells[11].textContent.trim();
+  document.getElementById('project_observation').value = cells[12].textContent.trim();
 
+  // Configurar el formulario para modo edición
   document.getElementById('project_code').readOnly = true;
-  document.getElementById('btnSubmitProject').textContent = 'Actualizar Proyecto';
-  document.getElementById('btnCancelEdit').style.display = 'block';
-  document.querySelector('#formProyecto').onsubmit = function(e) {
+  document.querySelector('#formProyecto button[type="submit"]').textContent = 'Actualizar Proyecto';
+  
+  // Cambiar el comportamiento del formulario
+  const form = document.querySelector('#formProyecto');
+  form.onsubmit = function(e) {
     e.preventDefault();
     actualizarProyecto();
   };
+  
+  // Hacer scroll al formulario
+  document.getElementById('formProyecto').scrollIntoView({ behavior: 'smooth' });
 }
 
 function actualizarProyecto() {
@@ -634,6 +680,12 @@ function actualizarProyecto() {
     project_code: document.getElementById('project_code').value,
     project_name: document.getElementById('project_name').value,
     registration_date: document.getElementById('registration_date').value,
+    client_name: document.getElementById('client_name').value,
+    client_rut: document.getElementById('client_rut').value,
+    project_stage: document.getElementById('project_stage').value,
+    project_status: document.getElementById('project_status').value,
+    client_phone: document.getElementById('client_phone').value,
+    contact_phone: document.getElementById('contact_phone').value,
     project_address: document.getElementById('project_address').value,
     project_georeference: document.getElementById('project_georeference').value,
     project_contact: document.getElementById('project_contact').value,
@@ -645,14 +697,19 @@ function actualizarProyecto() {
     .withSuccessHandler(response => {
       showMessage('msgProyecto', response, response.includes('correctamente') ? 'success' : 'error');
       if (response.includes('correctamente')) {
+        // Limpiar formulario y restaurar modo registro
         document.getElementById('formProyecto').reset();
-        document.getElementById('registration_date').valueAsDate = new Date();
+        setDefaultDates();
         document.getElementById('project_code').readOnly = false;
         document.querySelector('#formProyecto button[type="submit"]').textContent = 'Registrar Proyecto';
-        document.querySelector('#formProyecto').onsubmit = function(e) {
+        
+        // Restaurar el comportamiento original del formulario
+        const form = document.querySelector('#formProyecto');
+        form.onsubmit = function(e) {
           e.preventDefault();
           registrarProyecto(e);
         };
+        
         cargarProyectos();
       }
     })
@@ -960,3 +1017,30 @@ document.addEventListener('DOMContentLoaded', function() {
       })
       .guardarBonificacionesEnHoja(desde, hasta, filtro);
   }
+
+  function filtrarPorEstado(estado) {
+  const rows = document.querySelectorAll('#tablaProyectos table tbody tr');
+  const buttons = document.querySelectorAll('.btn-filter');
+  
+  // Actualizar botones activos
+  buttons.forEach(btn => btn.classList.remove('active'));
+  if (estado === 'TODOS') {
+    document.getElementById('filter-todos').classList.add('active');
+  } else if (estado === 'Proyecto Activo') {
+    document.getElementById('filter-activo').classList.add('active');
+  } else if (estado === 'Proyecto Cerrado') {
+    document.getElementById('filter-cerrado').classList.add('active');
+  } else if (estado === 'Proyecto Programado') {
+    document.getElementById('filter-programado').classList.add('active');
+  }
+  
+  // Filtrar filas
+  rows.forEach(row => {
+    if (estado === 'TODOS') {
+      row.style.display = '';
+    } else {
+      const rowStatus = row.getAttribute('data-status');
+      row.style.display = rowStatus === estado ? '' : 'none';
+    }
+  });
+}

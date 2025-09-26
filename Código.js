@@ -560,12 +560,12 @@ function inicializarSistema() {
     let sheetProyectos = ss.getSheetByName(HOJA_PROYECTOS);
     if (!sheetProyectos) {
       sheetProyectos = ss.insertSheet(HOJA_PROYECTOS);
-      const headers = [["project_code", "project_name", "registration_date", "project_address", "project_georeference", "project_contact", "project_observation", "Timestamp"]];
-      sheetProyectos.getRange(1, 1, 1, 8).setValues(headers).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+      const headers = [["project_code", "project_name", "registration_date", "client_name", "client_rut", "project_stage", "project_status", "client_phone", "contact_phone", "project_address", "project_georeference", "project_contact", "project_observation", "Timestamp"]];
+      sheetProyectos.getRange(1, 1, 1, 14).setValues(headers).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
       sheetProyectos.getRange("A:A").setNumberFormat("@");
       sheetProyectos.getRange("C:C").setNumberFormat("dd/mm/yyyy");
       sheetProyectos.getRange("H:H").setNumberFormat("dd/mm/yyyy hh:mm:ss");
-      sheetProyectos.autoResizeColumns(1, 8);
+      sheetProyectos.autoResizeColumns(1, 14);
     }
 
     // --- Hoja Contabilidad ---
@@ -880,16 +880,22 @@ function registrarProyecto(proyecto) {
       return "Error: Ya existe un proyecto con ese código.";
     }
     
-    sheet.appendRow([
-      proyecto.project_code,
-      proyecto.project_name,
-      new Date(proyecto.registration_date),
-      proyecto.project_address || "",
-      proyecto.project_georeference || "",
-      proyecto.project_contact || "",
-      proyecto.project_observation || "",
-      new Date()
-    ]);
+  sheet.appendRow([
+    proyecto.project_code,
+    proyecto.project_name,
+    new Date(proyecto.registration_date),
+    proyecto.client_name || "",
+    proyecto.client_rut || "",
+    proyecto.project_stage || "",
+    proyecto.project_status || "Proyecto Activo",
+    proyecto.client_phone || "",
+    proyecto.contact_phone || "",
+    proyecto.project_address || "",
+    proyecto.project_georeference || "",
+    proyecto.project_contact || "",
+    proyecto.project_observation || "",
+    new Date()
+  ]);
     
     return "Proyecto registrado correctamente.";
   } catch (error) {
@@ -916,10 +922,16 @@ function obtenerProyectos() {
       project_code: row[0],
       project_name: row[1],
       registration_date: Utilities.formatDate(new Date(row[2]), Session.getScriptTimeZone(), "yyyy-MM-dd"),
-      project_address: row[3] || "",
-      project_georeference: row[4] || "",
-      project_contact: row[5] || "",
-      project_observation: row[6] || ""
+      client_name: row[3] || "",
+      client_rut: row[4] || "",
+      project_stage: row[5] || "",
+      project_status: row[6] || "Proyecto Activo",
+      client_phone: row[7] || "",
+      contact_phone: row[8] || "",
+      project_address: row[9] || "",
+      project_georeference: row[10] || "",
+      project_contact: row[11] || "",
+      project_observation: row[12] || ""
     }));
     
     return proyectos;
@@ -948,10 +960,16 @@ function actualizarProyecto(proyecto) {
       if (data[i][0] === proyecto.project_code) {
         sheet.getRange(i + 1, 2).setValue(proyecto.project_name);
         sheet.getRange(i + 1, 3).setValue(new Date(proyecto.registration_date));
-        sheet.getRange(i + 1, 4).setValue(proyecto.project_address || "");
-        sheet.getRange(i + 1, 5).setValue(proyecto.project_georeference || "");
-        sheet.getRange(i + 1, 6).setValue(proyecto.project_contact || "");
-        sheet.getRange(i + 1, 7).setValue(proyecto.project_observation || "");
+        sheet.getRange(i + 1, 4).setValue(proyecto.client_name || "");
+        sheet.getRange(i + 1, 5).setValue(proyecto.client_rut || "");
+        sheet.getRange(i + 1, 6).setValue(proyecto.project_stage || "");
+        sheet.getRange(i + 1, 7).setValue(proyecto.project_status || "Proyecto Activo");
+        sheet.getRange(i + 1, 8).setValue(proyecto.client_phone || "");
+        sheet.getRange(i + 1, 9).setValue(proyecto.contact_phone || "");
+        sheet.getRange(i + 1, 10).setValue(proyecto.project_address || "");
+        sheet.getRange(i + 1, 11).setValue(proyecto.project_georeference || "");
+        sheet.getRange(i + 1, 12).setValue(proyecto.project_contact || "");
+        sheet.getRange(i + 1, 13).setValue(proyecto.project_observation || "");
         
         return "Proyecto actualizado correctamente.";
       }
