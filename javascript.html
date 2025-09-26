@@ -749,23 +749,34 @@ function buscarProyectos(searchTerm) {
 // FUNCIONES PARA FONDOS DE CAJA
 // ===============================================================
 
+// REEMPLAZA la función 'cargarListasFondosCaja' existente con esta versión corregida:
+
 function cargarListasFondosCaja() {
-  // Cargar tipos de registro
+  // Cargar tipos de registro para ambos selectores
   google.script.run
     .withSuccessHandler(function(tipos) {
+      // 1. Popula el dropdown del formulario de registro
       const selectTipoRegistro = document.getElementById('tipo_registro_caja');
       let tiposOptions = '<option value="">Seleccione un tipo...</option>';
       tipos.forEach(tipo => {
         tiposOptions += `<option value="${tipo}">${tipo}</option>`;
       });
       selectTipoRegistro.innerHTML = tiposOptions;
+
+      // 2. (CORRECCIÓN) Popula también el dropdown del filtro de balance
+      const selectTipoBalance = document.getElementById('balance-tipo-movimiento');
+      let balanceOptions = '<option value="TODOS">Todos los Tipos</option>';
+      tipos.forEach(tipo => {
+        balanceOptions += `<option value="${tipo}">${tipo}</option>`;
+      });
+      selectTipoBalance.innerHTML = balanceOptions;
     })
     .withFailureHandler(function(error) {
       showMessage('msgFondosCaja', `Error al cargar tipos de registro: ${error}`, 'error');
     })
     .obtenerTiposRegistro();
 
-  // Cargar colaboradores
+  // Cargar colaboradores (esta parte no cambia)
   google.script.run
     .withSuccessHandler(function(colaboradores) {
       const selectColaborador = document.getElementById('colaborador_caja');
@@ -802,63 +813,45 @@ function registrarMovimientoCaja(event) {
   
   google.script.run
     .withSuccessHandler(function(response) {
-      const container = document.getElementById('msgFondosCaja');
-      container.innerHTML = '';
-      if (response && typeof response === 'object') {
-        if (!response.success) {
-          showMessage('msgFondosCaja', response.message || 'Error desconocido', 'error');
-          return;
+      showMessage('msgFondosCaja', response.message, response.success ? 'success' : 'error');
+
+      if (response.success) {
+        document.getElementById('formFondosCaja').reset();
+        cargarResumenSaldos();
+
+        // Si es una salida, mostrar botones de acción
+        if (response.idRegistro && response.pdfUrl) {
+          const container = document.getElementById('msgFondosCaja');
+          const actionsDiv = document.createElement('div');
+          actionsDiv.className = 'actions';
+          actionsDiv.style.marginTop = '15px';
+
+          actionsDiv.innerHTML = `
+            <button class="btn btn-secondary" onclick="enviarCorreoManualmente('${response.idRegistro}')">Enviar Vale por Correo</button>
+            <button class="btn" onclick="imprimirVale('${response.pdfUrl}')">Imprimir Vale (PDF)</button>
+          `;
+          container.appendChild(actionsDiv);
         }
-
-        // Mostrar mensaje y botones si existen URLs
-        const msgDiv = document.createElement('div');
-        msgDiv.className = 'message ' + (response.success ? 'success' : 'error');
-        msgDiv.textContent = response.message || '';
-        container.appendChild(msgDiv);
-
-        if (response.valeUrl) {
-          const link = document.createElement('a');
-          link.href = response.valeUrl;
-          link.target = '_blank';
-          link.textContent = 'Abrir Vale (Doc)';
-          link.style.marginLeft = '8px';
-          container.appendChild(link);
-
-          const btnAbrir = document.createElement('button');
-          btnAbrir.className = 'btn';
-          btnAbrir.textContent = 'Abrir Doc';
-          btnAbrir.onclick = function() { window.open(response.valeUrl, '_blank'); };
-          btnAbrir.style.marginLeft = '8px';
-          container.appendChild(btnAbrir);
-        }
-
-        if (response.pdfUrl) {
-          const linkPdf = document.createElement('a');
-          linkPdf.href = response.pdfUrl;
-          linkPdf.target = '_blank';
-          linkPdf.textContent = 'Abrir Vale (PDF)';
-          linkPdf.style.marginLeft = '8px';
-          container.appendChild(linkPdf);
-
-          const btnPdf = document.createElement('button');
-          btnPdf.className = 'btn';
-          btnPdf.textContent = 'Abrir PDF';
-          btnPdf.onclick = function() { window.open(response.pdfUrl, '_blank'); };
-          btnPdf.style.marginLeft = '8px';
-          container.appendChild(btnPdf);
-        }
-      } else {
-        showMessage('msgFondosCaja', response, 'success');
       }
-      document.getElementById('formFondosCaja').reset();
-      cargarResumenSaldos();
     })
     .withFailureHandler(function(error) {
       showMessage('msgFondosCaja', `Error: ${error}`, 'error');
     })
     .registrarMovimientoCaja(movimiento);
 }
+function enviarCorreoManualmente(idRegistro) {
+  const container = document.getElementById('msgFondosCaja');
+  showMessage(container.id, 'Enviando correo, por favor espere...', 'info');
 
+  google.script.run
+    .withSuccessHandler(function(response) {
+      showMessage(container.id, response.message, response.success ? 'success' : 'error');
+    })
+    .withFailureHandler(function(error) {
+      showMessage(container.id, `Error al enviar correo: ${error.message}`, 'error');
+    })
+    .enviarValePorCorreo(idRegistro);
+}
 function imprimirVale(url) {
   // Abre el documento en una nueva pestaña; el usuario puede usar la función de impresión del navegador.
   window.open(url, '_blank');
@@ -1043,4 +1036,116 @@ document.addEventListener('DOMContentLoaded', function() {
       row.style.display = rowStatus === estado ? '' : 'none';
     }
   });
+}
+// AGREGA estas dos nuevas funciones en 'javascript.html'
+
+let datosBalanceActual = null; // Variable global para guardar los datos consultados
+
+function consultarBalance(event) {
+  if (event) event.preventDefault();
+
+  const filtros = {
+    fechaDesde: document.getElementById('balance-fecha-desde').value,
+    fechaHasta: document.getElementById('balance-fecha-hasta').value,
+    tipoMovimiento: document.getElementById('balance-tipo-movimiento').value
+  };
+
+  const loading = document.getElementById('loadingBalance');
+  const container = document.getElementById('tablaBalanceContainer');
+  const actions = document.getElementById('balance-actions');
+
+  loading.style.display = 'block';
+  loading.textContent = 'Consultando balance...';
+  container.innerHTML = '';
+  actions.style.display = 'none';
+  datosBalanceActual = null;
+
+  google.script.run
+    .withSuccessHandler(response => {
+      loading.style.display = 'none';
+      if (response.error) {
+        showMessage('msgBalance', response.error, 'error');
+        return;
+      }
+      datosBalanceActual = response; // Guardar datos para exportar
+      renderBalanceTabla(response);
+      actions.style.display = 'flex';
+    })
+    .withFailureHandler(error => {
+      loading.style.display = 'none';
+      showMessage('msgBalance', `Error: ${error.message}`, 'error');
+    })
+    .obtenerBalanceFiltrado(filtros);
+}
+
+function renderBalanceTabla(response) {
+  const container = document.getElementById('tablaBalanceContainer');
+  if (!response || !response.data || response.data.length === 0) {
+    container.innerHTML = '<div class="message info">No se encontraron movimientos con los filtros seleccionados.</div>';
+    return;
+  }
+
+  let table = `<table><thead><tr>
+                  <th>Fecha</th>
+                  <th>Colaborador</th>
+                  <th>Entrada</th>
+                  <th>Salida</th>
+                  <th>Saldo Acumulado</th>
+                </tr></thead><tbody>`;
+
+  response.data.forEach(row => {
+    table += `<tr>
+                <td>${row.fecha}</td>
+                <td>${row.nombre}</td>
+                <td style="text-align: right; color: green;">${formatearMoneda(row.entrada)}</td>
+                <td style="text-align: right; color: red;">${formatearMoneda(row.salida)}</td>
+                <td style="text-align: right; font-weight: bold;">${formatearMoneda(row.saldo)}</td>
+              </tr>`;
+  });
+
+  table += `</tbody>
+            <tfoot>
+              <tr style="background-color: #f0f8fc;">
+                <td colspan="2" style="text-align: right; font-weight: bold;">TOTALES</td>
+                <td style="text-align: right; font-weight: bold; color: green;">${formatearMoneda(response.summary.totalEntradas)}</td>
+                <td style="text-align: right; font-weight: bold; color: red;">${formatearMoneda(response.summary.totalSalidas)}</td>
+                <td></td>
+              </tr>
+              <tr style="background-color: #e8f4f8;">
+                <td colspan="4" style="text-align: right; font-weight: bold;">DIFERENCIA (ENTRADAS - SALIDAS)</td>
+                <td style="text-align: right; font-weight: bold;">${formatearMoneda(response.summary.diferencia)}</td>
+              </tr>
+            </tfoot></table>`;
+  container.innerHTML = table;
+}
+// AGREGA estas dos nuevas funciones en 'javascript.html'
+function guardarBalance() {
+  if (!datosBalanceActual) {
+    showMessage('msgBalance', 'Primero debes consultar un balance.', 'error');
+    return;
+  }
+  showMessage('msgBalance', 'Guardando en hoja...', 'info');
+  google.script.run
+    .withSuccessHandler(res => showMessage('msgBalance', res.message, res.success ? 'success' : 'error'))
+    .withFailureHandler(err => showMessage('msgBalance', `Error: ${err.message}`, 'error'))
+    .guardarBalanceEnHoja(datosBalanceActual);
+}
+
+function exportarBalance() {
+  if (!datosBalanceActual) {
+    showMessage('msgBalance', 'Primero debes consultar un balance.', 'error');
+    return;
+  }
+  showMessage('msgBalance', 'Generando exportación...', 'info');
+  google.script.run
+    .withSuccessHandler(res => {
+      if(res.success && res.url) {
+        showMessage('msgBalance', '¡Exportación lista! Abriendo en nueva pestaña...', 'success');
+        window.open(res.url, '_blank');
+      } else {
+        showMessage('msgBalance', res.message, 'error');
+      }
+    })
+    .withFailureHandler(err => showMessage('msgBalance', `Error: ${err.message}`, 'error'))
+    .exportarBalanceComoNuevaHoja(datosBalanceActual);
 }

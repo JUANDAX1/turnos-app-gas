@@ -360,7 +360,38 @@
             <div class="card-body">
               <div id="loadingSaldos" class="loading">Cargando...</div>
               <div class="table-container" id="tablaSaldos"></div>
+              <div class="card">
+                <div class="card-header">Balance de Movimientos</div>
+                <div class="card-body">
+                  <form id="formBalance" onsubmit="consultarBalance(event)" class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+                    <div class="form-group">
+                      <label for="balance-fecha-desde">Desde</label>
+                      <input type="date" id="balance-fecha-desde" required>
+                    </div>
+                    <div class="form-group">
+                      <label for="balance-fecha-hasta">Hasta</label>
+                      <input type="date" id="balance-fecha-hasta" required>
+                    </div>
+                    <div class="form-group">
+                      <label for="balance-tipo-movimiento">Tipo de Registro</label>
+                      <select id="balance-tipo-movimiento"></select>
+                    </div>
+                    <div class="form-group" style="justify-content: flex-end;">
+                      <button type="submit" class="btn btn-primary" style="width: auto;">Consultar</button>
+                    </div>
+                  </form>
+
+                  <div id="loadingBalance" class="loading"></div>
+                  <div class="actions" style="margin-top: 20px; display: none;" id="balance-actions">
+                    <button class="btn btn-success" onclick="guardarBalance()">Guardar en Hoja</button>
+                    <button class="btn" onclick="exportarBalance()">Exportar</button>
+                  </div>
+                  <div class="table-container" id="tablaBalanceContainer" style="margin-top: 15px;"></div>
+                  <div id="msgBalance"></div>
+                </div>
+              </div>
             </div>
+
           </div>
         </div>
       </div>

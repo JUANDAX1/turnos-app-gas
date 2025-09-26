@@ -1048,113 +1048,72 @@ function obtenerTiposRegistro() {
  * @param {object} movimiento - Objeto con los datos del movimiento.
  * @returns {string} Mensaje de éxito o error.
  */
+
 function registrarMovimientoCaja(movimiento) {
   try {
     const ss = SpreadsheetApp.openById(getSpreadsheetId());
     const sheet = ss.getSheetByName(HOJA_CONTABILIDAD);
-    
-    // Obtener datos del colaborador
     const sheetColaboradores = ss.getSheetByName(HOJA_COLABORADORES);
     const colaboradoresData = sheetColaboradores.getRange("A:B").getValues();
     const colaborador = colaboradoresData.find(row => row[0].toString() === movimiento.idColaborador.toString());
-    
+
     if (!colaborador) {
       return { success: false, message: "Error: Colaborador no encontrado." };
     }
-    
+
+    const idRegistroUnico = new Date().getTime().toString(); // ID único para la transacción
     const entrada = movimiento.tipoMovimiento === "entrada" ? movimiento.monto : 0;
     const salida = movimiento.tipoMovimiento === "salida" ? movimiento.monto : 0;
-    
-    // Preparar fila a insertar
-    const nuevaFila = [
-      movimiento.idColaborador,
-      colaborador[1], // Nombre completo
-      movimiento.tipoRegistro,
-      entrada,
-      salida,
-      movimiento.detalle,
-      new Date()
-    ];
 
-    // Insertar la fila de forma manual para obtener el índice
-    const lastRow = sheet.getLastRow();
-    sheet.getRange(lastRow + 1, 1, 1, nuevaFila.length).setValues([nuevaFila]);
-
-    // Si la hoja tiene la columna URL_Vale, la ubicamos
     const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-    const idxUrl = headers.indexOf('URL_Vale');
+    const idxIdTransaccion = headers.indexOf('ID_Transaccion');
 
-    // Si es una salida, generar un vale de caja en Google Docs con dos copias
-    if (movimiento.tipoMovimiento === "salida") {
-      try {
-        const filaInsertada = lastRow + 1;
-        const resultVale = generarValeCaja(movimiento, colaborador); // devuelve { fileId, url }
-
-        if (resultVale && resultVale.url && idxUrl !== -1) {
-          // Escribir la URL en la nueva fila
-          sheet.getRange(filaInsertada, idxUrl + 1).setValue(resultVale.url);
-        }
-
-        // Ahora generar PDF, guardarlo en carpeta y compartir/enviar
-        try {
-          const carpeta = crearCarpetaValesSiNoExiste();
-          const pdfInfo = guardarPdfDesdeDoc(resultVale.fileId, carpeta);
-
-          // Buscar emails
-          const emailColaborador = obtenerEmailColaborador(movimiento.idColaborador); // columna I en Colaboradores
-          const emailAdmin = obtenerEmailAdmin();
-
-          // Compartir con colaborador y admin (si existen)
-          const emailsACompartir = [];
-          if (emailColaborador) emailsACompartir.push(emailColaborador);
-          if (emailAdmin) emailsACompartir.push(emailAdmin);
-          if (emailsACompartir.length > 0) {
-            compartirArchivoConEmails(resultVale.fileId, emailsACompartir);
-            if (pdfInfo && pdfInfo.fileId) {
-              compartirArchivoConEmails(pdfInfo.fileId, emailsACompartir);
-            }
-          }
-
-          // Enviar correos con PDF adjunto
-          const subject = `Vale de Caja - ${colaborador[1]} - $${Number(movimiento.monto).toFixed(2)}`;
-          const body = `Adjunto encontrará el vale de caja por $${Number(movimiento.monto).toFixed(2)}.\n\nDetalle: ${movimiento.detalle}`;
-          if (emailColaborador) enviarCorreoConAdjunto(emailColaborador, subject, body, pdfInfo.fileId);
-          if (emailAdmin) enviarCorreoConAdjunto(emailAdmin, subject, body, pdfInfo.fileId);
-
-          // Escribir info del PDF y estado en la fila
-          const idxPdf = headers.indexOf('PDF_FileId');
-          const idxUrlPdf = headers.indexOf('URL_PDF');
-          const idxStatus = headers.indexOf('Vale_Status');
-          if (idxPdf !== -1 && pdfInfo && pdfInfo.fileId) {
-            sheet.getRange(filaInsertada, idxPdf + 1).setValue(pdfInfo.fileId);
-          }
-          if (idxUrlPdf !== -1 && pdfInfo && pdfInfo.url) {
-            sheet.getRange(filaInsertada, idxUrlPdf + 1).setValue(pdfInfo.url);
-          }
-          if (idxStatus !== -1) {
-            sheet.getRange(filaInsertada, idxStatus + 1).setValue('ENVIADO');
-          }
-        } catch (errFlow) {
-          console.error('Error en flujo de PDF/compartir/enviar:', errFlow);
-          if (idxUrl !== -1) sheet.getRange(filaInsertada, idxUrl + 1).setValue(resultVale.url || '');
-          // marcar estado de error
-          const idxStatusErr = headers.indexOf('Vale_Status');
-          if (idxStatusErr !== -1) sheet.getRange(filaInsertada, idxStatusErr + 1).setValue('ERROR');
-        }
-
-        return { success: true, message: 'Movimiento registrado correctamente.', valeUrl: resultVale && resultVale.url ? resultVale.url : null, pdfUrl: (typeof pdfInfo !== 'undefined' && pdfInfo && pdfInfo.url) ? pdfInfo.url : null };
-      } catch (errVale) {
-        console.error('Error al generar vale de caja:', errVale);
-        return { success: true, message: `Movimiento registrado correctamente. Pero no se pudo generar el vale: ${errVale.message}` };
-      }
+    if (idxIdTransaccion === -1) {
+      const newCol = sheet.getLastColumn() + 1;
+      sheet.getRange(1, newCol).setValue('ID_Transaccion').setBackground('#2E86AB').setFontColor('white').setFontWeight('bold');
     }
 
-    return { success: true, message: "Movimiento registrado correctamente." };
+    const nuevaFila = [
+      movimiento.idColaborador, colaborador[1], movimiento.tipoRegistro,
+      entrada, salida, movimiento.detalle, new Date()
+    ];
+
+    const filaInsertada = sheet.getLastRow() + 1;
+    sheet.getRange(filaInsertada, 1, 1, nuevaFila.length).setValues([nuevaFila]);
+
+    if (idxIdTransaccion !== -1) {
+         sheet.getRange(filaInsertada, idxIdTransaccion + 1).setValue(idRegistroUnico);
+    }
+
+    if (movimiento.tipoMovimiento === "salida") {
+      const resultVale = generarValeCaja(movimiento, colaborador, idRegistroUnico); // Pasa el ID único
+      const carpeta = crearCarpetaValesSiNoExiste();
+      const pdfInfo = guardarPdfDesdeDoc(resultVale.fileId, carpeta);
+
+      const idxUrl = headers.indexOf('URL_Vale');
+      if (idxUrl !== -1) sheet.getRange(filaInsertada, idxUrl + 1).setValue(resultVale.url);
+
+      const idxPdf = headers.indexOf('PDF_FileId');
+      if (idxPdf !== -1) sheet.getRange(filaInsertada, idxPdf + 1).setValue(pdfInfo.fileId);
+
+      const idxUrlPdf = headers.indexOf('URL_PDF');
+      if (idxUrlPdf !== -1) sheet.getRange(filaInsertada, idxUrlPdf + 1).setValue(pdfInfo.url);
+
+      return {
+        success: true,
+        message: 'Movimiento de salida registrado. Oprima los botones para gestionar el vale.',
+        idRegistro: idRegistroUnico,
+        pdfUrl: pdfInfo.url
+      };
+    }
+
+    return { success: true, message: "Movimiento de entrada registrado correctamente." };
   } catch (error) {
     console.error("Error en registrarMovimientoCaja:", error);
     return { success: false, message: `Error al registrar el movimiento: ${error.message}` };
   }
 }
+
 
 /**
  * Genera un documento tipo "Vale de Caja" con dos copias (Administrador y Colaborador)
@@ -1227,11 +1186,72 @@ function generarValeCaja(movimiento, colaborador) {
   return { fileId: fileId, url: url };
 }
 
-/**
- * Función temporal de prueba para generar un vale con datos mock.
- * Úsala desde el editor de Apps Script para forzar la pantalla de autorización
- * y verificar que la generación de documentos y PDFs funciona correctamente.
- */
+// AGREGA esta nueva función en 'Código.js'
+
+function enviarValePorCorreo(idRegistro) {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_CONTABILIDAD);
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const idxIdTransaccion = headers.indexOf('ID_Transaccion');
+    const idxPdfId = headers.indexOf('PDF_FileId');
+    const idxColaboradorId = headers.indexOf('ID_Colaborador');
+    const idxNombre = headers.indexOf('NombreCompleto');
+    const idxMontoSalida = headers.indexOf('SALIDA_$');
+    const idxDetalle = headers.indexOf('Detalle_transaccion');
+    const idxStatus = headers.indexOf('Vale_Status');
+
+    if (idxIdTransaccion === -1 || idxPdfId === -1) {
+      return { success: false, message: "Error: Columnas necesarias no encontradas en la hoja." };
+    }
+
+    let registroEncontrado = null;
+    let rowIndex = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][idxIdTransaccion] == idRegistro) {
+        registroEncontrado = data[i];
+        rowIndex = i + 1;
+        break;
+      }
+    }
+
+    if (!registroEncontrado) {
+      return { success: false, message: "Error: No se encontró el registro del vale." };
+    }
+
+    const pdfFileId = registroEncontrado[idxPdfId];
+    const idColaborador = registroEncontrado[idxColaboradorId];
+    const nombreColaborador = registroEncontrado[idxNombre];
+    const monto = registroEncontrado[idxMontoSalida];
+    const detalle = registroEncontrado[idxDetalle];
+
+    const emailColaborador = obtenerEmailColaborador(idColaborador);
+    const emailAdmin = obtenerEmailAdmin();
+    const emailsACompartir = [emailColaborador, emailAdmin].filter(Boolean);
+
+    if (pdfFileId && emailsACompartir.length > 0) {
+      compartirArchivoConEmails(pdfFileId, emailsACompartir);
+      const subject = `Vale de Caja - ${nombreColaborador} - ${formatearMoneda(monto)}`;
+      const body = `Se ha generado un vale de caja a nombre de ${nombreColaborador} por un monto de ${formatearMoneda(monto)}.\n\nDetalle: ${detalle}\n\nEl PDF se encuentra adjunto.`;
+
+      if (emailColaborador) enviarCorreoConAdjunto(emailColaborador, subject, body, pdfFileId);
+      if (emailAdmin) enviarCorreoConAdjunto(emailAdmin, subject, body, pdfFileId);
+
+      if (idxStatus !== -1 && rowIndex !== -1) {
+        sheet.getRange(rowIndex, idxStatus + 1).setValue('ENVIADO');
+      }
+      return { success: true, message: `Correo enviado a: ${emailsACompartir.join(', ')}` };
+    }
+
+    return { success: false, message: "No se encontró ID de PDF o destinatarios para enviar el correo." };
+  } catch (e) {
+    console.error("Error en enviarValePorCorreo:", e);
+    return { success: false, message: e.message };
+  }
+}
+
+
 /**
  * Obtiene los días trabajados por proyecto y colaborador desde la hoja 'Bonificaciones'.
  * La cabecera de la hoja debe tener el formato 'Nombre (ID)'.
@@ -1729,4 +1749,109 @@ function guardarBonosAPagar(dataTabla) {
     console.error("Error en guardarBonosAPagar:", e);
     return { success: false, message: `Error al guardar en la hoja de cálculo: ${e.message}` };
   }
+}
+function obtenerBalanceFiltrado(filtros) {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_CONTABILIDAD);
+    const data = sheet.getDataRange().getValues().slice(1);
+
+    const fechaDesde = new Date(filtros.fechaDesde.replace(/-/g, '\/') + ' 00:00:00');
+    const fechaHasta = new Date(filtros.fechaHasta.replace(/-/g, '\/') + ' 23:59:59');
+
+    let saldoAcumulado = 0;
+    let totalEntradas = 0;
+    let totalSalidas = 0;
+
+    const resultados = data.map(row => {
+        const fechaMovimiento = new Date(row[6]);
+        const tipoRegistro = row[2];
+        const entrada = parseFloat(row[3]) || 0;
+        const salida = parseFloat(row[4]) || 0;
+
+        // Lógica de filtrado
+        const enRango = fechaMovimiento >= fechaDesde && fechaMovimiento <= fechaHasta;
+        const coincideTipo = (filtros.tipoMovimiento === 'TODOS' || tipoRegistro === filtros.tipoMovimiento);
+
+        if (enRango && coincideTipo) {
+            saldoAcumulado += entrada - salida;
+            totalEntradas += entrada;
+            totalSalidas += salida;
+            return {
+                fecha: Utilities.formatDate(fechaMovimiento, Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm'),
+                nombre: row[1],
+                entrada: entrada,
+                salida: salida,
+                saldo: saldoAcumulado
+            };
+        }
+        return null;
+    }).filter(Boolean); // Elimina los nulos que no pasaron el filtro
+
+    return {
+      data: resultados,
+      summary: {
+        totalEntradas: totalEntradas,
+        totalSalidas: totalSalidas,
+        diferencia: totalEntradas - totalSalidas
+      }
+    };
+
+  } catch (e) {
+    console.error("Error en obtenerBalanceFiltrado:", e);
+    return { error: e.message };
+  }
+}
+
+function exportarBalanceComoNuevaHoja(datosBalance) {
+  try {
+    const newSs = SpreadsheetApp.create(`Exportación de Balance - ${new Date().toLocaleDateString()}`);
+    const sheet = newSs.getSheets()[0];
+    // Aquí reusamos la lógica de la función de guardar
+    guardarBalanceEnHoja({ ...datosBalance, spreadsheet: newSs }); // Pasamos el nuevo spreadsheet
+
+    return { success: true, url: newSs.getUrl() };
+  } catch (e) {
+    return { success: false, message: `Error al exportar: ${e.message}` };
+  }
+}
+
+function guardarBalanceEnHoja(payload) {
+    const datosBalance = payload;
+    const ss = payload.spreadsheet || SpreadsheetApp.openById(getSpreadsheetId());
+
+    try {
+        const nombreHoja = payload.spreadsheet ? "Balance" : "Balance Filtrado";
+        // ... resto de la lógica de la función sin cambios
+        let sheet = ss.getSheetByName(nombreHoja);
+        if (sheet && !payload.spreadsheet) {
+          sheet.clear();
+        } else if (!sheet) {
+          sheet = ss.insertSheet(nombreHoja);
+        }
+
+        const headers = ["Fecha", "Colaborador", "Entrada", "Salida", "Saldo Acumulado"];
+        sheet.getRange(1, 1, 1, headers.length).setValues([headers])
+          .setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+
+        if (datosBalance && datosBalance.data && datosBalance.data.length > 0) {
+          const rows = datosBalance.data.map(r => [r.fecha, r.nombre, r.entrada, r.salida, r.saldo]);
+          sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+
+          const summaryRow = sheet.getLastRow() + 2;
+          sheet.getRange(summaryRow, 2).setValue("TOTALES").setFontWeight("bold");
+          sheet.getRange(summaryRow, 3).setValue(datosBalance.summary.totalEntradas);
+          sheet.getRange(summaryRow, 4).setValue(datosBalance.summary.totalSalidas);
+
+          sheet.getRange(summaryRow + 1, 2).setValue("DIFERENCIA").setFontWeight("bold");
+          sheet.getRange(summaryRow + 1, 5).setValue(datosBalance.summary.diferencia);
+
+          sheet.getRange(2, 3, sheet.getLastRow(), 3).setNumberFormat("$#,##0");
+        }
+
+        sheet.autoResizeColumns(1, headers.length);
+        return { success: true, message: `Datos guardados en la hoja '${nombreHoja}'.` };
+    } catch(e) {
+        return { success: false, message: `Error al guardar: ${e.message}` };
+    }
 }
