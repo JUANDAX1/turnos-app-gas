@@ -1750,6 +1750,7 @@ function guardarBonosAPagar(dataTabla) {
     return { success: false, message: `Error al guardar en la hoja de cálculo: ${e.message}` };
   }
 }
+
 function obtenerBalanceFiltrado(filtros) {
   try {
     const ss = SpreadsheetApp.openById(getSpreadsheetId());
@@ -1782,7 +1783,8 @@ function obtenerBalanceFiltrado(filtros) {
                 nombre: row[1],
                 entrada: entrada,
                 salida: salida,
-                saldo: saldoAcumulado
+                saldo: saldoAcumulado,
+                detalle: row[5] || ''
             };
         }
         return null;
@@ -1818,11 +1820,10 @@ function exportarBalanceComoNuevaHoja(datosBalance) {
 
 function guardarBalanceEnHoja(payload) {
     const datosBalance = payload;
-    const ss = payload.spreadsheet || SpreadsheetApp.openById(getSpreadsheetId());
+    const ss = payload.spreadsheet || SpreadsheetApp.openById(getSpreadreadsheetId());
 
     try {
         const nombreHoja = payload.spreadsheet ? "Balance" : "Balance Filtrado";
-        // ... resto de la lógica de la función sin cambios
         let sheet = ss.getSheetByName(nombreHoja);
         if (sheet && !payload.spreadsheet) {
           sheet.clear();
@@ -1830,14 +1831,17 @@ function guardarBalanceEnHoja(payload) {
           sheet = ss.insertSheet(nombreHoja);
         }
 
-        const headers = ["Fecha", "Colaborador", "Entrada", "Salida", "Saldo Acumulado"];
+        // 1. Añade "Detalle" al final de los encabezados
+        const headers = ["Fecha", "Colaborador", "Entrada", "Salida", "Saldo Acumulado", "Detalle"];
         sheet.getRange(1, 1, 1, headers.length).setValues([headers])
           .setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
 
         if (datosBalance && datosBalance.data && datosBalance.data.length > 0) {
-          const rows = datosBalance.data.map(r => [r.fecha, r.nombre, r.entrada, r.salida, r.saldo]);
+          // 2. Añade r.detalle al mapeo de las filas
+          const rows = datosBalance.data.map(r => [r.fecha, r.nombre, r.entrada, r.salida, r.saldo, r.detalle]);
           sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
 
+          // La lógica del pie de página no cambia
           const summaryRow = sheet.getLastRow() + 2;
           sheet.getRange(summaryRow, 2).setValue("TOTALES").setFontWeight("bold");
           sheet.getRange(summaryRow, 3).setValue(datosBalance.summary.totalEntradas);

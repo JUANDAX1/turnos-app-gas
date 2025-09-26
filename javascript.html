@@ -824,47 +824,58 @@ function toggleMontoInputs() {
   montoInput.placeholder = tipoMovimiento === 'entrada' ? 'Ingrese el monto a recibir' : 'Ingrese el monto a entregar';
 }
 
+// REEMPLAZA la función 'registrarMovimientoCaja' existente con esta:
+
 function registrarMovimientoCaja(event) {
   event.preventDefault();
-  
+
   const movimiento = {
     idColaborador: document.getElementById('colaborador_caja').value,
     tipoRegistro: document.getElementById('tipo_registro_caja').value,
     tipoMovimiento: document.getElementById('tipo_movimiento').value,
     monto: parseFloat(document.getElementById('monto_caja').value),
-    detalle: document.getElementById('detalle_caja').value
+    detalle: document.getElementById('detalle_caja').value.trim() // Usamos .trim() para limpiar espacios
   };
 
+  // --- INICIO DE LA VALIDACIÓN ---
+  // Si el tipo es "RENDICIONES", el detalle no puede estar vacío.
+  if (movimiento.tipoRegistro === 'RENDICIONES' && !movimiento.detalle) {
+    showMessage('msgFondosCaja', 'Error: Para las rendiciones, el campo "Detalle de la transacción" es obligatorio.', 'error');
+    return; // Detiene la ejecución de la función
+  }
+  // --- FIN DE LA VALIDACIÓN ---
+
   showMessage('msgFondosCaja', 'Registrando movimiento...', 'info');
-  
+
   google.script.run
     .withSuccessHandler(function(response) {
-      showMessage('msgFondosCaja', response.message, response.success ? 'success' : 'error');
+        // ... (el resto de la función no cambia)
+        showMessage('msgFondosCaja', response.message, response.success ? 'success' : 'error');
 
-      if (response.success) {
-        document.getElementById('formFondosCaja').reset();
-        cargarResumenSaldos();
+        if (response.success) {
+          document.getElementById('formFondosCaja').reset();
+          cargarResumenSaldos();
 
-        // Si es una salida, mostrar botones de acción
-        if (response.idRegistro && response.pdfUrl) {
-          const container = document.getElementById('msgFondosCaja');
-          const actionsDiv = document.createElement('div');
-          actionsDiv.className = 'actions';
-          actionsDiv.style.marginTop = '15px';
+          if (response.idRegistro && response.pdfUrl) {
+            const container = document.getElementById('msgFondosCaja');
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'actions';
+            actionsDiv.style.marginTop = '15px';
 
-          actionsDiv.innerHTML = `
-            <button class="btn btn-secondary" onclick="enviarCorreoManualmente('${response.idRegistro}')">Enviar Vale por Correo</button>
-            <button class="btn" onclick="imprimirVale('${response.pdfUrl}')">Imprimir Vale (PDF)</button>
-          `;
-          container.appendChild(actionsDiv);
+            actionsDiv.innerHTML = `
+              <button class="btn btn-secondary" onclick="enviarCorreoManualmente('${response.idRegistro}')">Enviar Vale por Correo</button>
+              <button class="btn" onclick="imprimirVale('${response.pdfUrl}')">Imprimir Vale (PDF)</button>
+            `;
+            container.appendChild(actionsDiv);
+          }
         }
-      }
     })
     .withFailureHandler(function(error) {
       showMessage('msgFondosCaja', `Error: ${error}`, 'error');
     })
     .registrarMovimientoCaja(movimiento);
 }
+
 function enviarCorreoManualmente(idRegistro) {
   const container = document.getElementById('msgFondosCaja');
   showMessage(container.id, 'Enviando correo, por favor espere...', 'info');
@@ -1118,6 +1129,8 @@ function consultarBalance(event) {
     .obtenerBalanceFiltrado(filtros);
 }
 
+// REEMPLAZA la función 'renderBalanceTabla' con esta:
+
 function renderBalanceTabla(response) {
   const container = document.getElementById('tablaBalanceContainer');
   if (!response || !response.data || response.data.length === 0) {
@@ -1125,50 +1138,43 @@ function renderBalanceTabla(response) {
     return;
   }
 
+  // 1. Añadir el encabezado para "Detalle"
   let table = `<table><thead><tr>
                   <th>Fecha</th>
                   <th>Colaborador</th>
                   <th>Entrada</th>
                   <th>Salida</th>
                   <th>Saldo Acumulado</th>
+                  <th>Detalle</th>
                 </tr></thead><tbody>`;
 
   response.data.forEach(row => {
+    // 2. Añadir la celda con el dato del detalle
     table += `<tr>
                 <td>${row.fecha}</td>
                 <td>${row.nombre}</td>
                 <td style="text-align: right; color: green;">${formatearMoneda(row.entrada)}</td>
                 <td style="text-align: right; color: red;">${formatearMoneda(row.salida)}</td>
                 <td style="text-align: right; font-weight: bold;">${formatearMoneda(row.saldo)}</td>
+                <td>${row.detalle || ''}</td>
               </tr>`;
   });
 
+  // 3. Ajustar los colspan en el pie de página para la nueva columna
   table += `</tbody>
             <tfoot>
               <tr style="background-color: #f0f8fc;">
                 <td colspan="2" style="text-align: right; font-weight: bold;">TOTALES</td>
                 <td style="text-align: right; font-weight: bold; color: green;">${formatearMoneda(response.summary.totalEntradas)}</td>
                 <td style="text-align: right; font-weight: bold; color: red;">${formatearMoneda(response.summary.totalSalidas)}</td>
-                <td></td>
+                <td colspan="2"></td>
               </tr>
               <tr style="background-color: #e8f4f8;">
-                <td colspan="4" style="text-align: right; font-weight: bold;">DIFERENCIA (ENTRADAS - SALIDAS)</td>
+                <td colspan="5" style="text-align: right; font-weight: bold;">DIFERENCIA (ENTRADAS - SALIDAS)</td>
                 <td style="text-align: right; font-weight: bold;">${formatearMoneda(response.summary.diferencia)}</td>
               </tr>
             </tfoot></table>`;
   container.innerHTML = table;
-}
-// AGREGA estas dos nuevas funciones en 'javascript.html'
-function guardarBalance() {
-  if (!datosBalanceActual) {
-    showMessage('msgBalance', 'Primero debes consultar un balance.', 'error');
-    return;
-  }
-  showMessage('msgBalance', 'Guardando en hoja...', 'info');
-  google.script.run
-    .withSuccessHandler(res => showMessage('msgBalance', res.message, res.success ? 'success' : 'error'))
-    .withFailureHandler(err => showMessage('msgBalance', `Error: ${err.message}`, 'error'))
-    .guardarBalanceEnHoja(datosBalanceActual);
 }
 
 function exportarBalance() {
