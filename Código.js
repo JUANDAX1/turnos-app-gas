@@ -237,8 +237,17 @@ function obtenerDatosParaAsistenciaGrid(fechaSeleccionada) {
     const asignaciones = sheetConfig.getRange("G2:G").getValues().flat().filter(String);
     const vehiculos = sheetConfig.getRange("K2:K").getValues().flat().filter(String);
 
-    // Obtener lista de proyectos
-    const proyectos = sheetProyectos ? sheetProyectos.getRange("B2:B").getValues().flat().filter(String) : [];
+    // Obtener lista de proyectos ACTIVOS
+    let proyectos = [];
+    if (sheetProyectos) {
+      // Leemos desde la columna A hasta la G (donde está el estado)
+      const proyectosData = sheetProyectos.getRange("A2:G" + sheetProyectos.getLastRow()).getValues(); 
+      proyectos = proyectosData
+        // Filtramos las filas donde la columna de estado (índice 6) sea "Proyecto Activo"
+        .filter(row => row[6] === 'Proyecto Activo') 
+        // De las filas filtradas, obtenemos solo el nombre del proyecto (columna B, índice 1)
+        .map(row => row[1]); 
+    }
 
     // 3. Obtener registros de la fecha seleccionada
     const fecha = fechaSeleccionada ? new Date(fechaSeleccionada.replace(/-/g, '\/') + ' 00:00:00') : new Date();
