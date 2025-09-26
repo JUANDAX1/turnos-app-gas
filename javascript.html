@@ -546,6 +546,11 @@ function cancelarEdicion() {
   document.getElementById('project_code').readOnly = false;
   document.getElementById('btnSubmitProject').textContent = 'Registrar Proyecto';
   document.getElementById('btnCancelEdit').style.display = 'none';
+
+  // Ocultar y reiniciar la opción de duplicar
+  document.getElementById('duplicar-container').style.display = 'none';
+  document.getElementById('duplicarProyectoCheck').checked = false;
+
   document.querySelector('#formProyecto').onsubmit = function(e) {
     e.preventDefault();
     registrarProyecto(e);
@@ -663,6 +668,9 @@ function editarProyecto(projectCode) {
   // Configurar el formulario para modo edición
   document.getElementById('project_code').readOnly = true;
   document.querySelector('#formProyecto button[type="submit"]').textContent = 'Actualizar Proyecto';
+
+  document.getElementById('btnCancelEdit').style.display = 'inline-block';
+  document.getElementById('duplicar-container').style.display = 'block';
   
   // Cambiar el comportamiento del formulario
   const form = document.querySelector('#formProyecto');
@@ -676,6 +684,8 @@ function editarProyecto(projectCode) {
 }
 
 function actualizarProyecto() {
+  const isDuplicating = document.getElementById('duplicarProyectoCheck').checked;
+
   const proyecto = {
     project_code: document.getElementById('project_code').value,
     project_name: document.getElementById('project_name').value,
@@ -692,29 +702,45 @@ function actualizarProyecto() {
     project_observation: document.getElementById('project_observation').value
   };
 
-  showMessage('msgProyecto', 'Actualizando proyecto...', 'info');
-  google.script.run
-    .withSuccessHandler(response => {
-      showMessage('msgProyecto', response, response.includes('correctamente') ? 'success' : 'error');
-      if (response.includes('correctamente')) {
-        // Limpiar formulario y restaurar modo registro
-        document.getElementById('formProyecto').reset();
-        setDefaultDates();
-        document.getElementById('project_code').readOnly = false;
-        document.querySelector('#formProyecto button[type="submit"]').textContent = 'Registrar Proyecto';
-        
-        // Restaurar el comportamiento original del formulario
-        const form = document.querySelector('#formProyecto');
-        form.onsubmit = function(e) {
-          e.preventDefault();
-          registrarProyecto(e);
-        };
-        
-        cargarProyectos();
-      }
-    })
-    .withFailureHandler(error => showMessage('msgProyecto', `Error: ${error.message}`, 'error'))
-    .actualizarProyecto(proyecto);
+  // Limpiar y restaurar el formulario en una función para no repetir código
+  const resetFormToRegisterMode = () => {
+      document.getElementById('formProyecto').reset();
+      document.getElementById('registration_date').valueAsDate = new Date();
+      document.getElementById('project_code').readOnly = false;
+      document.querySelector('#formProyecto button[type="submit"]').textContent = 'Registrar Proyecto';
+      document.getElementById('btnCancelEdit').style.display = 'none';
+      document.getElementById('duplicar-container').style.display = 'none';
+      document.getElementById('duplicarProyectoCheck').checked = false;
+      const form = document.querySelector('#formProyecto');
+      form.onsubmit = function(e) { e.preventDefault(); registrarProyecto(e); };
+      cargarProyectos();
+  };
+
+  if (isDuplicating) {
+    // --- LÓGICA PARA DUPLICAR (LLAMA A registrarProyecto) ---
+    showMessage('msgProyecto', 'Creando duplicado del proyecto...', 'info');
+    google.script.run
+      .withSuccessHandler(response => {
+        showMessage('msgProyecto', response, response.includes('correctamente') ? 'success' : 'error');
+        if (response.includes('correctamente')) {
+          resetFormToRegisterMode();
+        }
+      })
+      .withFailureHandler(error => showMessage('msgProyecto', `Error: ${error.message}`, 'error'))
+      .registrarProyecto(proyecto);
+  } else {
+    // --- LÓGICA ORIGINAL PARA ACTUALIZAR ---
+    showMessage('msgProyecto', 'Actualizando proyecto...', 'info');
+    google.script.run
+      .withSuccessHandler(response => {
+        showMessage('msgProyecto', response, response.includes('correctamente') ? 'success' : 'error');
+        if (response.includes('correctamente')) {
+          resetFormToRegisterMode();
+        }
+      })
+      .withFailureHandler(error => showMessage('msgProyecto', `Error: ${error.message}`, 'error'))
+      .actualizarProyecto(proyecto);
+  }
 }
 
 function eliminarProyecto(projectCode) {
@@ -1036,8 +1062,22 @@ document.addEventListener('DOMContentLoaded', function() {
       row.style.display = rowStatus === estado ? '' : 'none';
     }
   });
+
+  // Manejar el checkbox de duplicar proyecto
+  const duplicarCheck = document.getElementById('duplicarProyectoCheck');
+  if(duplicarCheck) {
+    duplicarCheck.addEventListener('change', function() {
+      const projectCodeInput = document.getElementById('project_code');
+      if (this.checked) {
+        projectCodeInput.readOnly = false;
+        projectCodeInput.focus();
+      } else {
+        projectCodeInput.readOnly = true;
+      }
+    });
+  }
 }
-// AGREGA estas dos nuevas funciones en 'javascript.html'
+
 
 let datosBalanceActual = null; // Variable global para guardar los datos consultados
 

@@ -281,6 +281,12 @@
                     <textarea id="project_observation" rows="3"></textarea>
                   </div>
                 </div>
+                <div class="form-group" id="duplicar-container" style="display: none; background-color: #e8f4f8; padding: 15px; border-radius: 8px; grid-column: 1 / -1;">
+                  <label for="duplicarProyectoCheck" style="flex-direction: row; align-items: center; cursor: pointer; color: #0c5460;">
+                    <input type="checkbox" id="duplicarProyectoCheck" style="width: auto; margin-right: 10px;">
+                    <strong>Duplicar Proyecto:</strong> Si marcas esta opción, se creará un proyecto nuevo con los datos de este formulario. **Recuerda cambiar el "Código del Proyecto"** para evitar errores.
+                  </label>
+                </div>
                 <div class="actions">
                   <button type="submit" class="btn btn-success" id="btnSubmitProject">Registrar Proyecto</button>
                   <button type="button" class="btn btn-secondary" id="btnCancelEdit" style="display: none;" onclick="cancelarEdicion()">Cancelar Edición</button>
