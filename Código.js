@@ -1232,8 +1232,12 @@ function enviarValePorCorreo(idRegistro) {
 
     if (pdfFileId && emailsACompartir.length > 0) {
       compartirArchivoConEmails(pdfFileId, emailsACompartir);
-      const subject = `Vale de Caja - ${nombreColaborador} - ${formatearMoneda(monto)}`;
-      const body = `Se ha generado un vale de caja a nombre de ${nombreColaborador} por un monto de ${formatearMoneda(monto)}.\n\nDetalle: ${detalle}\n\nEl PDF se encuentra adjunto.`;
+
+      // --- CORRECCIÓN AQUÍ ---
+      const montoFormateado = formatearMonedaCLP(monto); // Usamos la nueva función del servidor
+      const subject = `Vale de Caja - ${nombreColaborador} - ${montoFormateado}`;
+      const body = `Se ha generado un vale de caja a nombre de ${nombreColaborador} por un monto de ${montoFormateado}.\n\nDetalle: ${detalle}\n\nEl PDF se encuentra adjunto.`;
+      // --- FIN DE LA CORRECCIÓN ---
 
       if (emailColaborador) enviarCorreoConAdjunto(emailColaborador, subject, body, pdfFileId);
       if (emailAdmin) enviarCorreoConAdjunto(emailAdmin, subject, body, pdfFileId);
@@ -1481,6 +1485,25 @@ function crearCarpetaValesSiNoExiste() {
 }
 
 /**
+ * Crea (si no existe) una carpeta llamada 'Informes de Caja' en la raíz del Drive.
+ * @returns {Folder} carpeta creada o existente
+ */
+function crearCarpetaInformesSiNoExiste() {
+  try {
+    const nombre = 'Informes de Caja';
+    const folders = DriveApp.getFoldersByName(nombre);
+    if (folders.hasNext()) {
+      return folders.next();
+    }
+    const folder = DriveApp.createFolder(nombre);
+    return folder;
+  } catch (e) {
+    console.error('Error en crearCarpetaInformesSiNoExiste:', e);
+    throw e;
+  }
+}
+
+/**
  * Genera un PDF a partir de un Google Doc y lo guarda en la carpeta indicada.
  * @param {string} docId
  * @param {Folder} carpeta
@@ -1626,6 +1649,19 @@ function obtenerDatosPonderacion() {
     console.error("Error en obtenerDatosPonderacion:", e);
     return { error: e.message };
   }
+}
+
+/**
+ * Formatea un número como moneda CLP (Peso Chileno) en el lado del servidor.
+ * @param {number} valor El número a formatear.
+ * @returns {string} El valor formateado como "$1.234".
+ */
+function formatearMonedaCLP(valor) {
+  if (typeof valor !== 'number') {
+    return '$0';
+  }
+  // Añade el signo $ y los separadores de miles (puntos).
+  return '$' + valor.toFixed(0).replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1.');
 }
 
 
@@ -1807,20 +1843,36 @@ function obtenerBalanceFiltrado(filtros) {
 
 function exportarBalanceComoNuevaHoja(datosBalance) {
   try {
-    const newSs = SpreadsheetApp.create(`Exportación de Balance - ${new Date().toLocaleDateString()}`);
-    const sheet = newSs.getSheets()[0];
-    // Aquí reusamos la lógica de la función de guardar
-    guardarBalanceEnHoja({ ...datosBalance, spreadsheet: newSs }); // Pasamos el nuevo spreadsheet
+    // 1. Generar nombre de archivo con fecha y hora
+    const ahora = new Date();
+    const fechaFormateada = Utilities.formatDate(ahora, Session.getScriptTimeZone(), "yyyy-MM-dd_HH-mm");
+    const nombreArchivo = `Informe de Balance - ${fechaFormateada}`;
 
+    // 2. Crear la nueva hoja de cálculo
+    const newSs = SpreadsheetApp.create(nombreArchivo);
+    const newFile = DriveApp.getFileById(newSs.getId());
+
+    // 3. Obtener/Crear la carpeta de destino
+    const carpetaDestino = crearCarpetaInformesSiNoExiste();
+
+    // 4. Mover el archivo a la carpeta
+    newFile.moveTo(carpetaDestino);
+
+    // 5. Llenar la hoja con los datos
+    guardarBalanceEnHoja({ ...datosBalance, spreadsheet: newSs });
+
+    // 6. Devolver la URL del archivo ya movido
     return { success: true, url: newSs.getUrl() };
+
   } catch (e) {
+    console.error("Error en exportarBalanceComoNuevaHoja:", e);
     return { success: false, message: `Error al exportar: ${e.message}` };
   }
 }
 
 function guardarBalanceEnHoja(payload) {
     const datosBalance = payload;
-    const ss = payload.spreadsheet || SpreadsheetApp.openById(getSpreadreadsheetId());
+    const ss = payload.spreadsheet || SpreadsheetApp.openById(getSpreadsheetId());
 
     try {
         const nombreHoja = payload.spreadsheet ? "Balance" : "Balance Filtrado";

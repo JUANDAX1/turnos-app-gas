@@ -358,11 +358,15 @@
                 </div>
               </form>
               <div id="msgFondosCaja"></div>
+              <div id="vale-actions-container" class="actions" style="margin-top: 15px;"></div>
             </div>
           </div>
 
           <div class="card">
-            <div class="card-header">Resumen de Saldos</div>
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <span>Resumen de Saldos</span>
+              <button class="btn btn-sm btn-secondary" onclick="cargarResumenSaldos()">Actualizar Saldos</button>
+            </div>
             <div class="card-body">
               <div id="loadingSaldos" class="loading">Cargando...</div>
               <div class="table-container" id="tablaSaldos"></div>

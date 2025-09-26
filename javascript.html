@@ -849,31 +849,26 @@ function registrarMovimientoCaja(event) {
 
   google.script.run
     .withSuccessHandler(function(response) {
-        // ... (el resto de la función no cambia)
-        showMessage('msgFondosCaja', response.message, response.success ? 'success' : 'error');
+      showMessage('msgFondosCaja', response.message, response.success ? 'success' : 'error');
+      const valeActionsContainer = document.getElementById('vale-actions-container');
 
-        if (response.success) {
-          document.getElementById('formFondosCaja').reset();
-          cargarResumenSaldos();
+      if (response.success) {
+        document.getElementById('formFondosCaja').reset();
+        cargarResumenSaldos(); // Actualiza la tabla de saldos
 
-          if (response.idRegistro && response.pdfUrl) {
-            const container = document.getElementById('msgFondosCaja');
-            const actionsDiv = document.createElement('div');
-            actionsDiv.className = 'actions';
-            actionsDiv.style.marginTop = '15px';
-
-            actionsDiv.innerHTML = `
-              <button class="btn btn-secondary" onclick="enviarCorreoManualmente('${response.idRegistro}')">Enviar Vale por Correo</button>
-              <button class="btn" onclick="imprimirVale('${response.pdfUrl}')">Imprimir Vale (PDF)</button>
-            `;
-            container.appendChild(actionsDiv);
-          }
+        if (response.idRegistro && response.pdfUrl) {
+          // Si fue una SALIDA y se generó un vale, muestra los botones en su contenedor
+          valeActionsContainer.innerHTML = `
+            <button class="btn btn-secondary" onclick="enviarCorreoManualmente('${response.idRegistro}')">Enviar Vale por Correo</button>
+            <button class="btn" onclick="imprimirVale('${response.pdfUrl}')">Imprimir Vale (PDF)</button>
+          `;
+        } else {
+          // Si fue una ENTRADA o no se generó un vale, limpia el contenedor de botones
+          valeActionsContainer.innerHTML = '';
         }
+      }
     })
-    .withFailureHandler(function(error) {
-      showMessage('msgFondosCaja', `Error: ${error}`, 'error');
-    })
-    .registrarMovimientoCaja(movimiento);
+  .registrarMovimientoCaja(movimiento);
 }
 
 function enviarCorreoManualmente(idRegistro) {
@@ -1129,8 +1124,6 @@ function consultarBalance(event) {
     .obtenerBalanceFiltrado(filtros);
 }
 
-// REEMPLAZA la función 'renderBalanceTabla' con esta:
-
 function renderBalanceTabla(response) {
   const container = document.getElementById('tablaBalanceContainer');
   if (!response || !response.data || response.data.length === 0) {
@@ -1175,6 +1168,25 @@ function renderBalanceTabla(response) {
               </tr>
             </tfoot></table>`;
   container.innerHTML = table;
+}
+
+function guardarBalance() {
+  if (!datosBalanceActual) {
+    showMessage('msgBalance', 'Primero debes consultar un balance para poder guardarlo.', 'error');
+    return;
+  }
+  showMessage('msgBalance', 'Guardando datos en la hoja de cálculo...', 'info');
+
+  google.script.run
+    .withSuccessHandler(res => {
+      if (res.success) {
+        showMessage('msgBalance', res.message, 'success');
+      } else {
+        showMessage('msgBalance', res.message, 'error');
+      }
+    })
+    .withFailureHandler(err => showMessage('msgBalance', `Error al guardar: ${err.message}`, 'error'))
+    .guardarBalanceEnHoja(datosBalanceActual);
 }
 
 function exportarBalance() {
