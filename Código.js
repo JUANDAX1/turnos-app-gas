@@ -884,21 +884,25 @@ function obtenerBonificaciones(fechaDesde, fechaHasta, filtroBusqueda) {
         if (fr < new Date(desde.getFullYear(), desde.getMonth(), desde.getDate()) || fr > new Date(hasta.getFullYear(), hasta.getMonth(), hasta.getDate())) return;
 
         const asignacion = row[4] != null ? row[4].toString().trim() : '';
-        if (!asignacion) return;
-
-        // Extraer nombre del proyecto: si contiene 'PROYECTO' intentar obtener la parte posterior, si no usar la asignacion tal cual
-        let proyectoNombre = '';
         const up = asignacion.toUpperCase();
-        if (up.indexOf('PROYECTO') !== -1) {
-          // Buscar ':' y tomar lo que viene después, si no, quitar la palabra PROYECTO y posibles separadores
-          const idx = asignacion.indexOf(':');
-          if (idx !== -1) proyectoNombre = asignacion.substring(idx + 1).trim();
-          else proyectoNombre = asignacion.replace(/PROYECTO\s*-?\s*/i, '').trim();
-        } else {
-          proyectoNombre = asignacion;
+
+        // Si la asignación NO comienza con "PROYECTO", la ignoramos y pasamos a la siguiente fila.
+        if (!up.startsWith('PROYECTO')) {
+          return; 
         }
 
-        if (!proyectoNombre) return;
+        // Si es un proyecto, extraemos su nombre.
+        let proyectoNombre = '';
+        const idx = asignacion.indexOf(':');
+        if (idx !== -1) {
+          // Si hay ':', tomamos lo que sigue. Ej: "PROYECTO: Nombre" -> "Nombre"
+          proyectoNombre = asignacion.substring(idx + 1).trim();
+        } else {
+          // Si no hay ':', quitamos la palabra "PROYECTO". Ej: "PROYECTO Nombre" -> "Nombre"
+          proyectoNombre = asignacion.replace(/PROYECTO\s*-?\s*/i, '').trim();
+        }
+
+        if (!proyectoNombre) return; // Si el nombre del proyecto queda vacío, lo ignoramos.
 
         // Normalizar claves
         const projKey = proyectoNombre;

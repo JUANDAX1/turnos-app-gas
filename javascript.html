@@ -961,7 +961,10 @@ document.addEventListener('DOMContentLoaded', function() {
           const today = new Date();
           document.getElementById('bon-fecha-hasta').valueAsDate = today;
           document.getElementById('bon-fecha-desde').valueAsDate = new Date(today.getFullYear(), today.getMonth(), 1);
-          cargarBonificaciones();
+          
+          // Limpiamos la tabla y el spinner, ya no cargamos automáticamente
+          document.getElementById('tablaBonificaciones').innerHTML = '<div class="message info">Seleccione un rango de fechas y presione "Cargar" para ver los resultados.</div>';
+          document.getElementById('loadingBonificaciones').style.display = 'none';
         }, 100);
       });
     }
