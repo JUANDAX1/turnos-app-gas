@@ -9,6 +9,7 @@
 // ¡IMPORTANTE! Añade aquí los correos de los usuarios que SÍ pueden ver el contenido.
 const USUARIOS_AUTORIZADOS = [
   'juandanielcl77@gmail.com',
+  'm.melillanca@gmail.com',
   //'otro_usuario_autorizado@email.com'
 ];
 
