@@ -36,6 +36,7 @@ const HOJA_PROYECTOS = "Project_list";
 const HOJA_CONTABILIDAD = "contabilidad1";
 const HOJA_BONIFICACIONES = "Bonificaciones";
 const HOJA_PONDERACION = "ponderacion";
+const HOJA_PONDERACION_ESTANDAR = "ponderacion_estandar";
 
 const ROLES = {
   ADMIN: "ADMINISTRADOR",
@@ -625,6 +626,32 @@ function inicializarSistema() {
       sheetBonificaciones.getRange(1, 1, 1, 1).setValues(headers).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
       sheetBonificaciones.autoResizeColumns(1, 3);
     }
+
+    // --- Hoja Ponderacion Estandar ---
+    let sheetPonderacionEstandar = ss.getSheetByName(HOJA_PONDERACION_ESTANDAR);
+    if (!sheetPonderacionEstandar) {
+      sheetPonderacionEstandar = ss.insertSheet(HOJA_PONDERACION_ESTANDAR);
+      const headers = [["ID_Colaborador", "NombreCompleto", "Cargo", "PonderacionEstandar"]];
+      sheetPonderacionEstandar.getRange(1, 1, 1, 4).setValues(headers).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+
+      // Poblar con valores iniciales desde la hoja de Colaboradores
+      const colaboradoresData = ss.getSheetByName(HOJA_COLABORADORES).getDataRange().getValues().slice(1);
+      const datosIniciales = colaboradoresData.map(col => {
+        const cargo = (col[2] || '').toLowerCase();
+        let ponderacion = 0;
+        if (cargo.includes('tecnico') || cargo.includes('técnico')) {
+          ponderacion = 65;
+        } else if (cargo.includes('ayudante')) {
+          ponderacion = 35;
+        }
+        return [col[0], col[1], col[2], ponderacion];
+      });
+
+      if (datosIniciales.length > 0) {
+        sheetPonderacionEstandar.getRange(2, 1, datosIniciales.length, 4).setValues(datosIniciales);
+      }
+      sheetPonderacionEstandar.autoResizeColumns(1, 4);
+    }
     
     return "Sistema inicializado correctamente. Todas las hojas han sido creadas y configuradas.";
   } catch (error) {
@@ -632,6 +659,56 @@ function inicializarSistema() {
     return `Error al inicializar: ${error.message}`;
   }
 }
+
+/**
+ * Obtiene la lista de ponderaciones estándar por colaborador.
+ * @returns {Array<object>} Un arreglo de objetos con los datos de ponderación estándar.
+ */
+function obtenerPonderacionEstandar() {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_PONDERACION_ESTANDAR);
+    if (!sheet) return [];
+    
+    const data = sheet.getDataRange().getValues().slice(1); // Omitir cabecera
+    return data.map(row => ({
+      id: row[0],
+      nombre: row[1],
+      cargo: row[2],
+      ponderacion: row[3] || 0
+    }));
+  } catch (e) {
+    console.error("Error en obtenerPonderacionEstandar:", e);
+    return { error: e.message };
+  }
+}
+
+/**
+ * Guarda las ponderaciones estándar para todos los colaboradores.
+ * @param {Array<object>} ponderaciones - Arreglo de objetos {id, ponderacion}.
+ * @returns {object} Mensaje de éxito o error.
+ */
+function guardarPonderacionEstandar(ponderaciones) {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_PONDERACION_ESTANDAR);
+    const data = sheet.getRange("A2:A" + sheet.getLastRow()).getValues().flat();
+    
+    ponderaciones.forEach(item => {
+      const rowIndex = data.findIndex(id => id.toString() === item.id.toString());
+      if (rowIndex !== -1) {
+        // La fila es rowIndex + 2 (porque data empieza en A2 y findIndex es 0-based)
+        sheet.getRange(rowIndex + 2, 4).setValue(item.ponderacion);
+      }
+    });
+    
+    return { success: true, message: "Ponderaciones estándar guardadas." };
+  } catch (e) {
+    console.error("Error en guardarPonderacionEstandar:", e);
+    return { success: false, message: e.message };
+  }
+}
+
 /**
  * Consulta los registros de asistencia según un rango de fechas y un colaborador.
  * @param {object} filtros Objeto con fechaDesde, fechaHasta y colaboradorId ('TODOS' para todos).
@@ -1570,69 +1647,71 @@ function enviarCorreoConAdjunto(emailTo, subject, body, filePdfId) {
 // =============================================================================
 
 /**
- * Obtiene la matriz completa de datos para la página de ponderación.
- * Combina colaboradores activos y proyectos de asistencia con los datos guardados en la hoja 'ponderacion'.
- * @returns {object} Un objeto con { colaboradores: [{id, nombre}, ...], proyectos: [{nombre, ponderaciones: {colabId: valor}}, ...] }.
+ * Obtiene la matriz de datos para la página de ponderación.
+ * AJUSTE: Ahora carga los proyectos desde 'Bonificaciones', pero los valores de
+ * ponderación vienen de la tabla estándar, con posibilidad de ser sobreescritos.
+ * @returns {object} Objeto con { colaboradores, proyectos }.
  */
 function obtenerDatosPonderacion() {
   try {
     const ss = SpreadsheetApp.openById(getSpreadsheetId());
     const sheetColaboradores = ss.getSheetByName(HOJA_COLABORADORES);
-    const sheetAsistencia = ss.getSheetByName(HOJA_ASISTENCIA);
+    const sheetBonificaciones = ss.getSheetByName(HOJA_BONIFICACIONES);
     const sheetPonderacion = ss.getSheetByName(HOJA_PONDERACION);
 
-    // 1. Obtener todos los colaboradores activos (ID y Nombre)
+    // 1. Obtener colaboradores activos
     const colaboradoresData = sheetColaboradores.getDataRange().getValues().slice(1);
     const colaboradoresActivos = colaboradoresData
       .filter(row => row[6] === 'Activo')
       .map(row => ({ id: row[0].toString().trim(), nombre: row[1].toString().trim() }))
-      .sort((a, b) => a.nombre.localeCompare(b.nombre)); // Ordenar alfabéticamente
+      .sort((a, b) => a.nombre.localeCompare(b.nombre));
 
-    const mapaColaboradoresIdNombre = new Map(colaboradoresActivos.map(c => [c.id, c.nombre]));
+    // 2. Obtener ponderaciones estándar (nuestra fuente principal de valores)
+    const ponderacionesEstandarData = obtenerPonderacionEstandar(); // Usa la función que ya creamos
+    const mapaPonderacionEstandar = new Map(ponderacionesEstandarData.map(p => [p.id.toString().trim(), p.ponderacion]));
 
-    // 2. Obtener todos los proyectos únicos desde RegistrosAsistencia
-    const asignaciones = sheetAsistencia.getRange("E2:E").getValues().flat().filter(String);
-    const proyectosSet = new Set();
-    asignaciones.forEach(asignacion => {
-      let proyectoNombre = '';
-      const up = asignacion.toUpperCase();
-      if (up.startsWith('PROYECTO')) {
-        const idx = asignacion.indexOf(':');
-        if (idx !== -1) {
-          proyectoNombre = asignacion.substring(idx + 1).trim();
-        } else {
-          proyectoNombre = asignacion.replace(/PROYECTO\s*-?\s*/i, '').trim();
-        }
-        if (proyectoNombre) {
-          proyectosSet.add(proyectoNombre);
-        }
-      }
-    });
-    const todosLosProyectos = Array.from(proyectosSet).sort();
-
-    // 3. Leer los datos de ponderación existentes
-    const ponderacionesGuardadas = {}; // { proyecto: { nombreColaborador: valor } }
-    if (sheetPonderacion) {
-      const ponderacionData = sheetPonderacion.getDataRange().getValues();
-      if (ponderacionData.length > 1) {
-        const headers = ponderacionData[0].slice(1); // Nombres de colaboradores
-        ponderacionData.slice(1).forEach(row => {
-          const proyecto = row[0];
-          ponderacionesGuardadas[proyecto] = {};
-          headers.forEach((nombreCol, index) => {
-            ponderacionesGuardadas[proyecto][nombreCol] = row[index + 1];
-          });
-        });
-      }
+    // 3. Obtener la lista de proyectos desde la hoja BONIFICACIONES
+    if (!sheetBonificaciones) throw new Error("La hoja 'Bonificaciones' no existe. Por favor, calcule primero las bonificaciones.");
+    const bonificacionesData = sheetBonificaciones.getDataRange().getValues();
+    if (bonificacionesData.length <= 1) {
+        // Si no hay datos, retornamos una estructura vacía para evitar errores en el frontend.
+        return { colaboradores: colaboradoresActivos, proyectos: [] };
     }
-    
-    // 4. Construir la matriz final
-    const mapaColaboradoresNombreId = new Map(colaboradoresActivos.map(c => [c.nombre, c.id]));
-    const proyectosResult = todosLosProyectos.map(nombreProyecto => {
+    const proyectosEnBonificaciones = bonificacionesData.slice(1).map(row => row[0]).filter(String);
+
+    // 4. Leer ponderaciones específicas (las que el admin guardó para un proyecto)
+    const ponderacionesGuardadas = {};
+    if (sheetPonderacion && sheetPonderacion.getLastRow() > 1) {
+      const data = sheetPonderacion.getDataRange().getValues();
+      const headers = data[0];
+      const mapaNombreColumna = new Map(headers.map((h, i) => [h, i]));
+      
+      data.slice(1).forEach(row => {
+        const proyecto = row[0];
+        if (proyecto) {
+          ponderacionesGuardadas[proyecto] = {};
+          colaboradoresActivos.forEach(colab => {
+            const colIndex = mapaNombreColumna.get(colab.nombre);
+            if (colIndex !== undefined && row[colIndex] !== '') {
+              ponderacionesGuardadas[proyecto][colab.id] = row[colIndex];
+            }
+          });
+        }
+      });
+    }
+
+    // 5. Construir la matriz final combinando los datos
+    const proyectosResult = proyectosEnBonificaciones.map(nombreProyecto => {
       const ponderaciones = {};
       colaboradoresActivos.forEach(colab => {
-        const valorGuardado = (ponderacionesGuardadas[nombreProyecto] && ponderacionesGuardadas[nombreProyecto][colab.nombre]) ? ponderacionesGuardadas[nombreProyecto][colab.nombre] : 0;
-        ponderaciones[colab.id] = valorGuardado;
+        const valorGuardado = (ponderacionesGuardadas[nombreProyecto] && ponderacionesGuardadas[nombreProyecto][colab.id] !== undefined)
+          ? ponderacionesGuardadas[nombreProyecto][colab.id]
+          : null; // Si hay un valor específico guardado (incluso 0), lo usamos.
+
+        const valorEstandar = mapaPonderacionEstandar.get(colab.id) || 0;
+        
+        // Prioridad: 1. Valor guardado específico. 2. Valor estándar.
+        ponderaciones[colab.id] = (valorGuardado !== null) ? valorGuardado : valorEstandar;
       });
       return {
         nombre: nombreProyecto,
