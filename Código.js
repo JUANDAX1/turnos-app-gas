@@ -1,5 +1,82 @@
 /**
  * @OnlyCurrentDoc
+ * Este script se ejecuta automáticamente cuando el documento es abierto.
+ * Comprueba si el usuario tiene permiso para ver el contenido.
+ * Si no está autorizado, oculta todas las hojas y muestra una de "Acceso Denegado".
+ */
+
+// --- CONFIGURACIÓN ---
+// ¡IMPORTANTE! Añade aquí los correos de los usuarios que SÍ pueden ver el contenido.
+const USUARIOS_AUTORIZADOS = [
+  'juandanielcl77@gmail.com',
+  //'otro_usuario_autorizado@email.com'
+];
+
+// Nombre de la hoja que se muestra cuando el acceso es denegado.
+const HOJA_BLOQUEO = 'Acceso Denegado';
+
+
+/**
+ * Función principal que se ejecuta al abrir el documento.
+ * @param {Object} e - Objeto del evento (proporcionado por el activador onOpen).
+ */
+function onOpen(e) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+  const usuarioActual = Session.getActiveUser().getEmail();
+
+  // Comprueba si el usuario actual está en la lista de autorizados.
+  if (USUARIOS_AUTORIZADOS.includes(usuarioActual)) {
+    // Si está autorizado, nos aseguramos de que pueda ver todas las hojas.
+    mostrarHojas(ss);
+  } else {
+    // Si NO está autorizado, le bloqueamos el acceso.
+    ocultarHojas(ss);
+    ui.alert(
+      'Acceso No Autorizado',
+      'No tienes permisos para visualizar el contenido de este documento.',
+      ui.ButtonSet.OK
+    );
+  }
+}
+
+/**
+ * Oculta todas las hojas excepto la de bloqueo.
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} spreadsheet - La hoja de cálculo activa.
+ */
+function ocultarHojas(spreadsheet) {
+  const todasLasHojas = spreadsheet.getSheets();
+  todasLasHojas.forEach(hoja => {
+    if (hoja.getName() !== HOJA_BLOQUEO) {
+      hoja.hideSheet();
+    }
+  });
+  // Nos aseguramos que la hoja de bloqueo sí esté visible.
+  const hojaBloqueo = spreadsheet.getSheetByName(HOJA_BLOQUEO);
+  if (hojaBloqueo) {
+    hojaBloqueo.showSheet();
+  }
+}
+
+/**
+ * Muestra todas las hojas y oculta la de bloqueo.
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} spreadsheet - La hoja de cálculo activa.
+ */
+function mostrarHojas(spreadsheet) {
+  const todasLasHojas = spreadsheet.getSheets();
+  todasLasHojas.forEach(hoja => {
+    if (hoja.getName() === HOJA_BLOQUEO) {
+      hoja.hideSheet();
+    } else {
+      hoja.showSheet();
+    }
+  });
+}
+
+
+
+/**
+ * @OnlyCurrentDoc
  *
  * El código anterior es una directiva para mejorar el autocompletado de Apps Script.
  */
