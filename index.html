@@ -27,6 +27,7 @@
         <li class="nav-item" id="nav-proyectos"><a class="nav-link" onclick="showTab('proyectos', this)"><span class="nav-icon">🏗️</span>Registrar Proyectos</a></li>
         <li class="nav-item" id="nav-fondoscaja"><a class="nav-link" onclick="showTab('fondoscaja', this)"><span class="nav-icon">💰</span>Fondos de Caja</a></li>
         <li class="nav-item" id="nav-bonificaciones"><a class="nav-link" onclick="showTab('bonificaciones', this)"><span class="nav-icon">🎁</span>Bonificaciones</a></li>
+        <li class="nav-item" id="nav-otroshaberes"><a class="nav-link" onclick="showTab('otroshaberes', this)"><span class="nav-icon">💵</span>Otros Haberes</a></li>
         <li class="nav-item"><a class="nav-link" href="#" onclick="openPonderarPage()"><span class="nav-icon">⚖️</span>Ponderar Bonos</a></li>
         <li class="nav-item" id="nav-configuracion"><a class="nav-link" onclick="showTab('configuracion', this)"><span class="nav-icon">⚙️</span>Configuración</a></li>
       </ul>
@@ -476,6 +477,56 @@
           </div>
         </div>
       </div>
+      
+      <div id="otroshaberes" class="tab-content">
+        <div class="content-header"><h2>Gestión de Otros Haberes</h2></div>
+        <div class="content-body">
+          <div class="card">
+            <div class="card-header">Registrar Nuevo Haber</div>
+            <div class="card-body">
+              <form id="formOtroHaber" onsubmit="registrarOtroHaber(event)">
+                <div class="form-grid" style="grid-template-columns: 1fr 2fr 1fr 1fr;">
+                  <div class="form-group"><label for="haber-fecha">Fecha *</label><input id="haber-fecha" type="date" required></div>
+                  <div class="form-group"><label for="haber-colaborador">Colaborador *</label><select id="haber-colaborador" required></select></div>
+                  <div class="form-group"><label for="haber-tipo">Tipo de Haber *</label><select id="haber-tipo" required></select></div>
+                  <div class="form-group"><label for="haber-monto">Monto (CLP) *</label><input id="haber-monto" type="number" step="1" min="0" required></div>
+                </div>
+                <div class="form-group">
+                  <label for="haber-comentario">Comentario</label>
+                  <textarea id="haber-comentario" rows="2"></textarea>
+                </div>
+                <div class="actions">
+                  <button type="submit" class="btn btn-success">Guardar Registro</button>
+                </div>
+              </form>
+              <div id="msgOtroHaber"></div>
+            </div>
+          </div>
+
+          <div class="card">
+             <div class="card-header">Lista de Registros</div>
+             <div class="card-body">
+                <div class="form-grid" style="margin-bottom: 20px; grid-template-columns: 1fr 1fr 2fr;">
+                    <div class="form-group">
+                        <label for="haber-filtro-desde">Desde</label>
+                        <input type="date" id="haber-filtro-desde" onchange="mostrarOtrosHaberes()">
+                    </div>
+                    <div class="form-group">
+                        <label for="haber-filtro-hasta">Hasta</label>
+                        <input type="date" id="haber-filtro-hasta" onchange="mostrarOtrosHaberes()">
+                    </div>
+                    <div class="form-group">
+                        <label for="haber-filtro-busqueda">Búsqueda rápida</label>
+                        <input type="text" id="haber-filtro-busqueda" placeholder="Buscar por nombre, tipo, monto..." onkeyup="mostrarOtrosHaberes()">
+                    </div>
+                </div>
+                <div id="loadingOtrosHaberes" class="loading">Cargando...</div>
+                <div class="table-container" id="tablaOtrosHaberes"></div>
+             </div>
+          </div>
+        </div>
+      </div>
+    </div>
     </div>
   </div>
 

@@ -115,6 +115,7 @@ const HOJA_CONTABILIDAD = "contabilidad1";
 const HOJA_BONIFICACIONES = "Bonificaciones";
 const HOJA_PONDERACION = "ponderacion";
 const HOJA_PONDERACION_ESTANDAR = "ponderacion_estandar";
+const HOJA_OTROS_HABERES = "OtrosHaberes";
 
 const ROLES = {
   ADMIN: "ADMINISTRADOR",
@@ -731,6 +732,23 @@ function inicializarSistema() {
       sheetPonderacionEstandar.autoResizeColumns(1, 4);
     }
     
+    // --- Hoja OtrosHaberes ---
+    let sheetOtrosHaberes = ss.getSheetByName(HOJA_OTROS_HABERES);
+    if (!sheetOtrosHaberes) {
+      sheetOtrosHaberes = ss.insertSheet(HOJA_OTROS_HABERES);
+      const headers = [["ID_Haber", "ID_Colaborador", "NombreColaborador", "Fecha", "TipoHaber", "Monto", "Comentario", "Timestamp"]];
+      sheetOtrosHaberes.getRange(1, 1, 1, 8).setValues(headers).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+      sheetOtrosHaberes.getRange("F:F").setNumberFormat("$#,##0"); // Formato de moneda para Monto
+      sheetOtrosHaberes.autoResizeColumns(1, 8);
+    }
+
+    // --- Añadir Tipos de Haber en Hoja Configuracion (Columna R) ---
+    if (configHeaders.indexOf("TiposDeHaber") === -1) {
+        sheetConfig.getRange(1, 18).setValue("TiposDeHaber").setBackground("#2E86AB").setFontColor("white").setFontWeight("bold"); // Columna R es la 18
+        sheetConfig.getRange("R2:R4").setValues([["Bono Extra"], ["Reembolso Gastos"], ["Comisión"]]);
+        sheetConfig.autoResizeColumns(18, 1);
+    }
+
     return "Sistema inicializado correctamente. Todas las hojas han sido creadas y configuradas.";
   } catch (error) {
     console.error("Error en inicializarSistema:", error);
@@ -2071,4 +2089,137 @@ function guardarBalanceEnHoja(payload) {
     } catch(e) {
         return { success: false, message: `Error al guardar: ${e.message}` };
     }
+}
+
+// ===============================================================
+// GESTIÓN DE OTROS HABERES
+// ===============================================================
+
+/**
+ * Obtiene las listas necesarias para el formulario de Otros Haberes.
+ * @returns {object} Objeto con la lista de colaboradores y tipos de haber.
+ */
+function obtenerListasParaOtrosHaberes() {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheetColaboradores = ss.getSheetByName(HOJA_COLABORADORES);
+    const sheetConfig = ss.getSheetByName(HOJA_CONFIG);
+
+    const colaboradoresData = sheetColaboradores.getDataRange().getValues();
+    const colaboradoresActivos = colaboradoresData.slice(1).filter(row => row[6] === 'Activo').map(row => ({
+      id: row[0],
+      nombre: row[1]
+    }));
+
+    const tiposHaber = sheetConfig.getRange("R2:R").getValues().flat().filter(String);
+
+    return {
+      colaboradores: colaboradoresActivos,
+      tiposHaber: tiposHaber
+    };
+  } catch (e) {
+    console.error("Error en obtenerListasParaOtrosHaberes:", e);
+    return { colaboradores: [], tiposHaber: [] };
+  }
+}
+
+/**
+ * Registra un nuevo haber en la hoja de cálculo.
+ * @param {object} haber - Objeto con los datos del registro.
+ * @returns {string} Mensaje de éxito o error.
+ */
+function registrarOtroHaber(haber) {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_OTROS_HABERES);
+    const colaboradores = ss.getSheetByName(HOJA_COLABORADORES).getDataRange().getValues();
+    
+    const nombreColaborador = colaboradores.find(c => c[0].toString() === haber.idColaborador.toString())[1];
+    
+    // Generar un ID único basado en el timestamp
+    const idHaber = new Date().getTime();
+
+    sheet.appendRow([
+      idHaber,
+      haber.idColaborador,
+      nombreColaborador,
+      new Date(haber.fecha),
+      haber.tipoHaber,
+      parseFloat(haber.monto),
+      haber.comentario || "",
+      new Date()
+    ]);
+    
+    return "Registro guardado correctamente.";
+  } catch (e) {
+    console.error("Error en registrarOtroHaber:", e);
+    return `Error al guardar: ${e.message}`;
+  }
+}
+
+/**
+ * Obtiene los registros de Otros Haberes, aplicando filtros.
+ * @param {object} filtros - Objeto con fechaDesde, fechaHasta y busqueda.
+ * @returns {Array<object>} Lista de registros encontrados.
+ */
+function obtenerOtrosHaberes(filtros) {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_OTROS_HABERES);
+    const data = sheet.getDataRange().getValues().slice(1);
+
+    const fechaDesde = new Date(filtros.fechaDesde.replace(/-/g, '\/') + ' 00:00:00');
+    const fechaHasta = new Date(filtros.fechaHasta.replace(/-/g, '\/') + ' 23:59:59');
+    const busqueda = (filtros.busqueda || '').toLowerCase();
+
+    const resultados = data.filter(row => {
+      const fechaRegistro = new Date(row[3]);
+      const enRango = fechaRegistro >= fechaDesde && fechaRegistro <= fechaHasta;
+      if (!enRango) return false;
+
+      if (busqueda) {
+        // Combina los campos relevantes en un solo string para buscar
+        const textoFila = (row[2] + row[4] + row[5] + row[6]).toLowerCase();
+        return textoFila.includes(busqueda);
+      }
+      return true;
+    }).map(row => ({
+      idHaber: row[0],
+      nombreColaborador: row[2],
+      fecha: Utilities.formatDate(new Date(row[3]), Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+      tipoHaber: row[4],
+      monto: row[5],
+      comentario: row[6]
+    }));
+    
+    // Ordenar por fecha, del más reciente al más antiguo
+    return resultados.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+  } catch (e) {
+    console.error("Error en obtenerOtrosHaberes:", e);
+    return { error: e.message };
+  }
+}
+
+/**
+ * Elimina un registro de la hoja OtrosHaberes.
+ * @param {string} idHaber - El ID del registro a eliminar.
+ * @returns {string} Mensaje de éxito o error.
+ */
+function eliminarOtroHaber(idHaber) {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_OTROS_HABERES);
+    const data = sheet.getRange("A:A").getValues();
+
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0].toString() == idHaber.toString()) {
+        sheet.deleteRow(i + 1);
+        return "Registro eliminado correctamente.";
+      }
+    }
+    return "Error: No se encontró el registro para eliminar.";
+  } catch (e) {
+    console.error("Error en eliminarOtroHaber:", e);
+    return `Error al eliminar: ${e.message}`;
+  }
 }

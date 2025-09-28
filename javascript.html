@@ -79,6 +79,8 @@ function showTab(tabName, clickedLink) {
   } else if (tabName === 'fondoscaja') {
     cargarListasFondosCaja();
     cargarResumenSaldos();
+  } else if (tabName === 'otroshaberes') {
+    cargarDatosInicialesOtrosHaberes();
   }
 }
 
@@ -1209,4 +1211,120 @@ function exportarBalance() {
     })
     .withFailureHandler(err => showMessage('msgBalance', `Error: ${err.message}`, 'error'))
     .exportarBalanceComoNuevaHoja(datosBalanceActual);
+}
+
+// ===============================================================
+// FUNCIONES PARA OTROS HABERES
+// ===============================================================
+
+function cargarDatosInicialesOtrosHaberes() {
+  // Configurar fechas por defecto para los filtros
+  const today = new Date();
+  document.getElementById('haber-fecha').valueAsDate = today;
+  document.getElementById('haber-filtro-hasta').valueAsDate = today;
+  document.getElementById('haber-filtro-desde').valueAsDate = new Date(today.getFullYear(), today.getMonth(), 1);
+
+  // Cargar las listas desplegables
+  google.script.run
+    .withSuccessHandler(listas => {
+      const selectColaborador = document.getElementById('haber-colaborador');
+      let colOptions = '<option value="">Seleccione...</option>';
+      listas.colaboradores.forEach(c => { colOptions += `<option value="${c.id}">${c.nombre}</option>`; });
+      selectColaborador.innerHTML = colOptions;
+
+      const selectTipo = document.getElementById('haber-tipo');
+      let tipoOptions = '<option value="">Seleccione...</option>';
+      listas.tiposHaber.forEach(t => { tipoOptions += `<option value="${t}">${t}</option>`; });
+      selectTipo.innerHTML = tipoOptions;
+
+      // Una vez cargadas las listas, mostrar la tabla de registros
+      mostrarOtrosHaberes();
+    })
+    .obtenerListasParaOtrosHaberes();
+}
+
+function registrarOtroHaber(event) {
+  event.preventDefault();
+  const haber = {
+    fecha: document.getElementById('haber-fecha').value,
+    idColaborador: document.getElementById('haber-colaborador').value,
+    tipoHaber: document.getElementById('haber-tipo').value,
+    monto: document.getElementById('haber-monto').value,
+    comentario: document.getElementById('haber-comentario').value
+  };
+
+  showMessage('msgOtroHaber', 'Guardando registro...', 'info');
+  google.script.run
+    .withSuccessHandler(response => {
+      showMessage('msgOtroHaber', response, response.includes('correctamente') ? 'success' : 'error');
+      if (response.includes('correctamente')) {
+        document.getElementById('formOtroHaber').reset();
+        document.getElementById('haber-fecha').valueAsDate = new Date(); // Resetear fecha a hoy
+        mostrarOtrosHaberes(); // Actualizar la tabla
+      }
+    })
+    .registrarOtroHaber(haber);
+}
+
+function mostrarOtrosHaberes() {
+  const loading = document.getElementById('loadingOtrosHaberes');
+  const container = document.getElementById('tablaOtrosHaberes');
+  loading.style.display = 'block';
+  container.innerHTML = '';
+
+  const filtros = {
+    fechaDesde: document.getElementById('haber-filtro-desde').value,
+    fechaHasta: document.getElementById('haber-filtro-hasta').value,
+    busqueda: document.getElementById('haber-filtro-busqueda').value
+  };
+
+  google.script.run
+    .withSuccessHandler(data => {
+      loading.style.display = 'none';
+      if (data.error) {
+        container.innerHTML = `<div class="message error">${data.error}</div>`;
+        return;
+      }
+      if (data.length === 0) {
+        container.innerHTML = '<div class="message">No se encontraron registros con los filtros aplicados.</div>';
+        return;
+      }
+
+      let table = `<table><thead><tr>
+                      <th>Fecha</th>
+                      <th>Colaborador</th>
+                      <th>Tipo de Haber</th>
+                      <th>Monto</th>
+                      <th>Comentario</th>
+                      <th>Acciones</th>
+                    </tr></thead><tbody>`;
+      data.forEach(item => {
+        table += `<tr>
+                    <td>${item.fecha}</td>
+                    <td>${item.nombreColaborador}</td>
+                    <td>${item.tipoHaber}</td>
+                    <td>${formatearMoneda(item.monto)}</td>
+                    <td>${item.comentario}</td>
+                    <td>
+                      <button class="btn btn-sm btn-danger" onclick="solicitarEliminarHaber('${item.idHaber}')">Eliminar</button>
+                    </td>
+                  </tr>`;
+      });
+      table += '</tbody></table>';
+      container.innerHTML = table;
+    })
+    .obtenerOtrosHaberes(filtros);
+}
+
+function solicitarEliminarHaber(idHaber) {
+  if (confirm('¿Está seguro de que desea eliminar este registro? Esta acción no se puede deshacer.')) {
+    google.script.run
+      .withSuccessHandler(response => {
+        alert(response);
+        if (response.includes('correctamente')) {
+          mostrarOtrosHaberes();
+        }
+      })
+      .eliminarOtroHaber(idHaber);
+  }
 }
