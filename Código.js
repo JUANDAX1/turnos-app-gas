@@ -2235,7 +2235,25 @@ function eliminarOtroHaber(idHaber) {
 
 // ===============================================================
 // INFORME MAESTRO DE NÓMINA
-// ===============================================================
+// ==============================================================
+
+/**
+ * Convierte un texto con formato de moneda a un número.
+ * Ejemplo: "$1.234,56" -> 1234.56
+ * @param {string|number} valor El valor a convertir.
+ * @returns {number} El valor como número.
+ */
+function parsearMoneda(valor) {
+  if (typeof valor === 'number') {
+    return valor;
+  }
+  if (typeof valor !== 'string' || !valor) {
+    return 0;
+  }
+  // Elimina el símbolo de moneda, los puntos de miles y reemplaza la coma decimal por un punto.
+  const valorLimpio = valor.replace(/\$/g, '').replace(/\./g, '').replace(/,/g, '.');
+  return parseFloat(valorLimpio) || 0;
+}
 
 /**
  * Realiza el cálculo completo del informe maestro de nómina para un mes y año dados.
@@ -2300,15 +2318,15 @@ function calcularNominaMaestra(mes, anio) {
       const colIndex = headerBonos.findIndex(h => h.includes(`(${idColaborador})`));
 
       if (colIndex !== -1) {
-        // Encontrar la fila que se llama "Total Colaborador"
-        const totalRowIndex = bonosData.findIndex(row => row[0] === 'Total Colaborador');
+        // La última fila contiene los totales.
+        const totalRow = bonosData[bonosData.length - 1];
         
-        if (totalRowIndex !== -1) {
-          // Si encontramos la fila, obtenemos el valor de la columna del colaborador
-          const valor = parseFloat(bonosData[totalRowIndex][colIndex]);
-          if (!isNaN(valor)) {
+        // *** CORRECCIÓN APLICADA AQUÍ ***
+        // Usamos la nueva función para convertir el valor de texto a número
+        const valor = parsearMoneda(totalRow[colIndex]);
+        
+        if (!isNaN(valor)) {
             bonoTrabajos = valor;
-          }
         }
       }
     }
@@ -2353,7 +2371,7 @@ function calcularNominaMaestra(mes, anio) {
 }
 
 /**
- * Exporta el informe maestro a una nueva hoja de cálculo de Google Sheets con fórmulas.
+ * Exporta el informe maestro a una nueva hoja de cálculo de Google Sheets con valores.
  * @param {number} mes - El mes (1-12).
  * @param {number} anio - El año.
  * @returns {object} Objeto con la URL del archivo creado o un mensaje de error.
@@ -2365,70 +2383,50 @@ function exportarNominaMaestra(mes, anio) {
       return { success: false, message: "No hay datos para exportar." };
     }
 
-    const nombreArchivo = `Informe Nomina - ${mes}-${anio}`;
+    const nombreArchivo = `Informe Nomina (Valores) - ${mes}-${anio}`;
     const newSs = SpreadsheetApp.create(nombreArchivo);
     const sheet = newSs.getActiveSheet();
     
-    // --- CONSTRUIR CABECERA ---
+    // --- CONSTRUIR CABECERA HORIZONTAL COMPLETA ---
     const header = [
-      "#", "Colaborador", "ID", "SUELDO BASE", "PERMISO", "DIAS TRABAJADOS", "SUELDO LIQ.",
-      "ANTICIPO 1", "ANTICIPO 2", "DESC. REND/VARIOS", "TOTAL DESCUENTOS", "SUELDO LIQUIDO 2",
-      "BONO TRABAJOS", ...haberesHeaders, "TOTAL BONOS", "TOTAL LIQUIDO A PAGO", "TOTAL MES"
+      // Info básica y Sueldo
+      "#", "Colaborador", "ID", "Sueldo Base", "Permisos (días)", "Días a Pagar", "Sueldo Líquido Inicial",
+      // Descuentos
+      "Anticipo 1", "Anticipo 2", "Desc. Rend/Varios", "Total Descuentos", "Sueldo Líquido (c/desc)",
+      // Bonos
+      "Bono Trabajos", ...haberesHeaders, "Total Bonos",
+      // Finales
+      "Total Líquido a Pago", "Costo Total Mes Empresa"
     ];
     sheet.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight("bold").setBackground("#4a86e8").setFontColor("white");
 
-    // --- DEFINIR LETRAS DE COLUMNAS (CORRECCIÓN CLAVE) ---
-    // Se definen aquí para que estén disponibles en toda la función.
-    const bonoTrabajosCol = "M";
-    const primerHaberColIndex = 14; // La columna N es la 14
-    const ultimoHaberCol = String.fromCharCode("A".charCodeAt(0) + primerHaberColIndex + haberesHeaders.length - 2);
-    const totalBonosCol = String.fromCharCode("A".charCodeAt(0) + primerHaberColIndex + haberesHeaders.length - 1);
-    const liquidoPagoCol = String.fromCharCode("A".charCodeAt(0) + primerHaberColIndex + haberesHeaders.length);
-    const totalMesCol = String.fromCharCode("A".charCodeAt(0) + primerHaberColIndex + haberesHeaders.length + 1);
-
-    // --- CONSTRUIR FILAS CON FÓRMULAS ---
-    const dataRows = [];
-    const formulaRows = [];
-    
-    data.forEach((col, index) => {
-      const rowNum = index + 2;
-      const haberesValues = haberesHeaders.map(h => col.otrosHaberes[h] || "");
-
-      const values = [
-        index + 1, col.nombre, col.id, col.sueldoBase, col.permisos, "", "",
-        col.anticipo1, col.anticipo2, col.descVarios, "", "",
-        col.bonoTrabajos, ...haberesValues, "", "", ""
+    // --- CONSTRUIR FILAS SOLO CON VALORES ---
+    const dataRows = data.map((col, index) => {
+      const haberesValues = haberesHeaders.map(h => col.otrosHaberes[h] || 0);
+      
+      // Crear una única fila con todos los datos
+      return [
+        index + 1, col.nombre, col.id,
+        col.sueldoBase, col.permisos, col.diasTrabajados, col.sueldoLiq,
+        col.anticipo1, col.anticipo2, col.descVarios, col.totalDescuentos, col.sueldoLiq2,
+        col.bonoTrabajos, ...haberesValues, col.totalBonos,
+        col.totalLiquidoPago, col.totalMes
       ];
-      dataRows.push(values);
-
-      // La lógica de la fórmula se mantiene, pero ahora las variables de columna son correctas.
-      const formulas = [
-        "", "", "", "", "",
-        `=30-E${rowNum}`,
-        `=IF(D${rowNum}>0, ROUND((D${rowNum}/30)*F${rowNum}, 0), 0)`, // Se añade un IF para evitar errores si el sueldo es 0
-        "", "", "",
-        `=SUM(H${rowNum}:J${rowNum})`,
-        `=G${rowNum}-K${rowNum}`,
-        "", ...Array(haberesHeaders.length).fill(""),
-        // Si no hay haberes, solo suma la columna de Bono Trabajos.
-        haberesHeaders.length > 0 ? `=SUM(${bonoTrabajosCol}${rowNum}:${ultimoHaberCol}${rowNum})` : `=SUM(${bonoTrabajosCol}${rowNum})`,
-        `=L${rowNum}+${totalBonosCol}${rowNum}`,
-        `=${liquidoPagoCol}${rowNum}+K${rowNum}`
-      ];
-      formulaRows.push(formulas);
     });
 
-    // --- ESCRIBIR DATOS Y FÓRMULAS EN LA HOJA ---
+    // --- ESCRIBIR DATOS EN LA HOJA ---
     if (dataRows.length > 0) {
         sheet.getRange(2, 1, dataRows.length, dataRows[0].length).setValues(dataRows);
-        sheet.getRange(2, 1, formulaRows.length, formulaRows[0].length).setFormulas(formulaRows);
     }
     
-    // Formatear columnas de moneda
-    sheet.getRange("D:D").setNumberFormat("$#,##0");
-    sheet.getRange("G:L").setNumberFormat("$#,##0");
-    // Usamos las variables ya definidas para el rango final
-    sheet.getRange(`${bonoTrabajosCol}:${totalMesCol}`).setNumberFormat("$#,##0");
+    // Formatear columnas de moneda con dos decimales
+    // Columnas: D, G a L, M hasta el final
+    sheet.getRange("D2:D" + (dataRows.length + 1)).setNumberFormat("$#,##0.00");
+    sheet.getRange("G2:L" + (dataRows.length + 1)).setNumberFormat("$#,##0.00");
+    const primeraColumnaBonos = String.fromCharCode("A".charCodeAt(0) + 12); // Columna M
+    const ultimaColumna = String.fromCharCode("A".charCodeAt(0) + header.length - 1);
+    sheet.getRange(`${primeraColumnaBonos}2:${ultimaColumna}` + (dataRows.length + 1)).setNumberFormat("$#,##0.00");
+
 
     sheet.autoResizeColumns(1, header.length);
 
