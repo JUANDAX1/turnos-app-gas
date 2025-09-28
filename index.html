@@ -20,15 +20,22 @@
       </div>
       <ul class="nav-menu">
         <li class="nav-item" id="nav-dashboard"><a class="nav-link" onclick="showTab('dashboard', this)"><span class="nav-icon">📊</span>Dashboard</a></li>
+
         <li class="nav-item" id="nav-asistencia"><a class="nav-link" onclick="showTab('asistencia', this)"><span class="nav-icon">✅</span>Registrar Asistencia</a></li>
-        <li class="nav-item" id="nav-colaboradores"><a class="nav-link" onclick="showTab('colaboradores', this)"><span class="nav-icon">🧑‍💼</span>Colaboradores</a></li>
-        <li class="nav-item" id="nav-nomina"><a class="nav-link" onclick="showTab('nomina', this)"><span class="nav-icon">💰</span>Calcular Nómina</a></li>
         <li class="nav-item" id="nav-consultas"><a class="nav-link" onclick="showTab('consultas', this)"><span class="nav-icon">🔍</span>Consultar Asistencia</a></li>
-        <li class="nav-item" id="nav-proyectos"><a class="nav-link" onclick="showTab('proyectos', this)"><span class="nav-icon">🏗️</span>Registrar Proyectos</a></li>
         <li class="nav-item" id="nav-fondoscaja"><a class="nav-link" onclick="showTab('fondoscaja', this)"><span class="nav-icon">💰</span>Fondos de Caja</a></li>
+
+        <li class="nav-item" id="nav-proyectos"><a class="nav-link" onclick="showTab('proyectos', this)"><span class="nav-icon">🏗️</span>Registrar Proyectos</a></li>
+        <li class="nav-item" id="nav-colaboradores"><a class="nav-link" onclick="showTab('colaboradores', this)"><span class="nav-icon">🧑‍💼</span>Registrar Colaboradores</a></li>
+        
         <li class="nav-item" id="nav-bonificaciones"><a class="nav-link" onclick="showTab('bonificaciones', this)"><span class="nav-icon">🎁</span>Bonificaciones</a></li>
         <li class="nav-item"><a class="nav-link" href="#" onclick="openPonderarPage()"><span class="nav-icon">⚖️</span>Ponderar Bonos</a></li>
+        <li class="nav-item" id="nav-otroshaberes"><a class="nav-link" onclick="showTab('otroshaberes', this)"><span class="nav-icon">💵</span>Otros Haberes</a></li>
+        
+        <li class="nav-item" id="nav-nomina"><a class="nav-link" onclick="openNominaPage()"><span class="nav-icon">💰</span>Calcular Nómina</a></li>
+
         <li class="nav-item" id="nav-configuracion"><a class="nav-link" onclick="showTab('configuracion', this)"><span class="nav-icon">⚙️</span>Configuración</a></li>
+        
       </ul>
     </nav>
 
@@ -108,52 +115,6 @@
           </div>
         </div>
       </div>
-      
-      <div id="nomina" class="tab-content">
-        <div class="content-header"><h2>Cálculo de Pre-Nómina</h2></div>
-        <div class="content-body">
-          <div class="card">
-            <div class="card-header">Seleccionar Período de Cálculo</div>
-            <div class="card-body">
-              <form id="formNomina" onsubmit="solicitarCalculoNomina(event)" class="form-grid">
-                <div class="form-group">
-                  <label for="nomina-mes">Mes</label>
-                  <select id="nomina-mes" required>
-                    <option value="1">Enero</option>
-                    <option value="2">Febrero</option>
-                    <option value="3">Marzo</option>
-                    <option value="4">Abril</option>
-                    <option value="5">Mayo</option>
-                    <option value="6">Junio</option>
-                    <option value="7">Julio</option>
-                    <option value="8">Agosto</option>
-                    <option value="9">Septiembre</option>
-                    <option value="10">Octubre</option>
-                    <option value="11">Noviembre</option>
-                    <option value="12">Diciembre</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label for="nomina-anio">Año</label>
-                  <input type="number" id="nomina-anio" required min="2020" max="2040">
-                </div>
-                <div class="form-group" style="justify-content: flex-end;">
-                  <button type="submit" class="btn btn-primary" style="width: auto;">Calcular Nómina</button>
-                </div>
-              </form>
-            </div>
-          </div>
-          <div class="card">
-            <div class="card-header">Resultados del Cálculo</div>
-            <div class="card-body">
-              <div id="loadingNomina" class="loading">Calculando, por favor espera...</div>
-              <div class="table-container" id="resultadosNomina">
-                <div class="message">Selecciona un mes y año para ver los resultados.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
 
 <div id="consultas" class="tab-content">
         <div class="content-header"><h2>Consultar Historial de Asistencia</h2></div>
@@ -229,12 +190,40 @@
                     <input id="project_code" type="text" required>
                   </div>
                   <div class="form-group">
-                    <label for="project_name">Nombre del Proyecto *</label>
+                    <label for="project_name">Nombre Proyecto-Etapa *</label>
                     <input id="project_name" type="text" required>
                   </div>
                   <div class="form-group">
                     <label for="registration_date">Fecha de Registro *</label>
                     <input id="registration_date" type="date" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="client_name">Nombre Cliente</label>
+                    <input id="client_name" type="text">
+                  </div>
+                  <div class="form-group">
+                    <label for="client_rut">RUT Cliente</label>
+                    <input id="client_rut" type="text">
+                  </div>
+                  <div class="form-group">
+                    <label for="project_stage">Etapa</label>
+                    <input id="project_stage" type="text">
+                  </div>
+                  <div class="form-group">
+                    <label for="project_status">Estado del Proyecto</label>
+                    <select id="project_status">
+                      <option value="Proyecto Activo">Proyecto Activo</option>
+                      <option value="Proyecto Cerrado">Proyecto Cerrado</option>
+                      <option value="Proyecto Programado">Proyecto Programado</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="client_phone">Teléfono Cliente</label>
+                    <input id="client_phone" type="tel">
+                  </div>
+                  <div class="form-group">
+                    <label for="contact_phone">Teléfono Contacto</label>
+                    <input id="contact_phone" type="tel">
                   </div>
                   <div class="form-group">
                     <label for="project_address">Dirección</label>
@@ -253,6 +242,12 @@
                     <textarea id="project_observation" rows="3"></textarea>
                   </div>
                 </div>
+                <div class="form-group" id="duplicar-container" style="display: none; background-color: #e8f4f8; padding: 15px; border-radius: 8px; grid-column: 1 / -1;">
+                  <label for="duplicarProyectoCheck" style="flex-direction: row; align-items: center; cursor: pointer; color: #0c5460;">
+                    <input type="checkbox" id="duplicarProyectoCheck" style="width: auto; margin-right: 10px;">
+                    <strong>Duplicar Proyecto:</strong> Si marcas esta opción, se creará un proyecto nuevo con los datos de este formulario. **Recuerda cambiar el "Código del Proyecto"** para evitar errores.
+                  </label>
+                </div>
                 <div class="actions">
                   <button type="submit" class="btn btn-success" id="btnSubmitProject">Registrar Proyecto</button>
                   <button type="button" class="btn btn-secondary" id="btnCancelEdit" style="display: none;" onclick="cancelarEdicion()">Cancelar Edición</button>
@@ -264,12 +259,18 @@
 
           <div class="card">
             <div class="card-header">
-              <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                 <span>Lista de Proyectos</span>
                 <div class="search-container">
                   <input type="text" id="searchProyectos" placeholder="Buscar proyectos..." onkeyup="buscarProyectos(this.value)">
                   <span class="search-icon">🔍</span>
                 </div>
+              </div>
+              <div class="filter-buttons">
+                <button class="btn btn-filter active" onclick="filtrarPorEstado('TODOS')" id="filter-todos">Todos</button>
+                <button class="btn btn-filter" onclick="filtrarPorEstado('Proyecto Activo')" id="filter-activo">Proyectos Activos</button>
+                <button class="btn btn-filter" onclick="filtrarPorEstado('Proyecto Cerrado')" id="filter-cerrado">Proyectos Cerrados</button>
+                <button class="btn btn-filter" onclick="filtrarPorEstado('Proyecto Programado')" id="filter-programado">Proyectos Programados</button>
               </div>
             </div>
             <div class="card-body">
@@ -318,15 +319,50 @@
                 </div>
               </form>
               <div id="msgFondosCaja"></div>
+              <div id="vale-actions-container" class="actions" style="margin-top: 15px;"></div>
             </div>
           </div>
 
           <div class="card">
-            <div class="card-header">Resumen de Saldos</div>
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <span>Resumen de Saldos</span>
+              <button class="btn btn-sm btn-secondary" onclick="cargarResumenSaldos()">Actualizar Saldos</button>
+            </div>
             <div class="card-body">
               <div id="loadingSaldos" class="loading">Cargando...</div>
               <div class="table-container" id="tablaSaldos"></div>
+              <div class="card">
+                <div class="card-header">Balance de Movimientos</div>
+                <div class="card-body">
+                  <form id="formBalance" onsubmit="consultarBalance(event)" class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+                    <div class="form-group">
+                      <label for="balance-fecha-desde">Desde</label>
+                      <input type="date" id="balance-fecha-desde" required>
+                    </div>
+                    <div class="form-group">
+                      <label for="balance-fecha-hasta">Hasta</label>
+                      <input type="date" id="balance-fecha-hasta" required>
+                    </div>
+                    <div class="form-group">
+                      <label for="balance-tipo-movimiento">Tipo de Registro</label>
+                      <select id="balance-tipo-movimiento"></select>
+                    </div>
+                    <div class="form-group" style="justify-content: flex-end;">
+                      <button type="submit" class="btn btn-primary" style="width: auto;">Consultar</button>
+                    </div>
+                  </form>
+
+                  <div id="loadingBalance" class="loading"></div>
+                  <div class="actions" style="margin-top: 20px; display: none;" id="balance-actions">
+                    <button class="btn btn-success" onclick="guardarBalance()">Guardar en Hoja</button>
+                    <button class="btn" onclick="exportarBalance()">Exportar</button>
+                  </div>
+                  <div class="table-container" id="tablaBalanceContainer" style="margin-top: 15px;"></div>
+                  <div id="msgBalance"></div>
+                </div>
+              </div>
             </div>
+
           </div>
         </div>
       </div>
@@ -401,6 +437,56 @@
           </div>
         </div>
       </div>
+      
+      <div id="otroshaberes" class="tab-content">
+        <div class="content-header"><h2>Gestión de Otros Haberes</h2></div>
+        <div class="content-body">
+          <div class="card">
+            <div class="card-header">Registrar Nuevo Haber</div>
+            <div class="card-body">
+              <form id="formOtroHaber" onsubmit="registrarOtroHaber(event)">
+                <div class="form-grid" style="grid-template-columns: 1fr 2fr 1fr 1fr;">
+                  <div class="form-group"><label for="haber-fecha">Fecha *</label><input id="haber-fecha" type="date" required></div>
+                  <div class="form-group"><label for="haber-colaborador">Colaborador *</label><select id="haber-colaborador" required></select></div>
+                  <div class="form-group"><label for="haber-tipo">Tipo de Haber *</label><select id="haber-tipo" required></select></div>
+                  <div class="form-group"><label for="haber-monto">Monto (CLP) *</label><input id="haber-monto" type="number" step="1" min="0" required></div>
+                </div>
+                <div class="form-group">
+                  <label for="haber-comentario">Comentario</label>
+                  <textarea id="haber-comentario" rows="2"></textarea>
+                </div>
+                <div class="actions">
+                  <button type="submit" class="btn btn-success">Guardar Registro</button>
+                </div>
+              </form>
+              <div id="msgOtroHaber"></div>
+            </div>
+          </div>
+
+          <div class="card">
+             <div class="card-header">Lista de Registros</div>
+             <div class="card-body">
+                <div class="form-grid" style="margin-bottom: 20px; grid-template-columns: 1fr 1fr 2fr;">
+                    <div class="form-group">
+                        <label for="haber-filtro-desde">Desde</label>
+                        <input type="date" id="haber-filtro-desde" onchange="mostrarOtrosHaberes()">
+                    </div>
+                    <div class="form-group">
+                        <label for="haber-filtro-hasta">Hasta</label>
+                        <input type="date" id="haber-filtro-hasta" onchange="mostrarOtrosHaberes()">
+                    </div>
+                    <div class="form-group">
+                        <label for="haber-filtro-busqueda">Búsqueda rápida</label>
+                        <input type="text" id="haber-filtro-busqueda" placeholder="Buscar por nombre, tipo, monto..." onkeyup="mostrarOtrosHaberes()">
+                    </div>
+                </div>
+                <div id="loadingOtrosHaberes" class="loading">Cargando...</div>
+                <div class="table-container" id="tablaOtrosHaberes"></div>
+             </div>
+          </div>
+        </div>
+      </div>
+    </div>
     </div>
   </div>
 

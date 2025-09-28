@@ -12,13 +12,14 @@ function handleLogin(user) {
   const loadingScreen = document.getElementById('loading-screen');
   if (user && user.rol && user.rol !== 'SIN_ACCESO') {
     USER_ROLE = user.rol;
+    webAppUrl = user.url; // <-- Asignamos la URL directamente desde el objeto 'user'
+
     loadingScreen.style.display = 'none';
     document.getElementById('app-container').style.visibility = 'visible';
     setupUIForRole();
     setDefaultDates();
     cargarListasDesplegables();
-    // Obtener la URL base de la app
-    google.script.run.withSuccessHandler(url => { webAppUrl = url; }).getWebAppUrl();
+    // Ya no necesitamos la llamada separada a getWebAppUrl()
   } else {
     loadingScreen.innerHTML = `<div class="login-card"><h2>Acceso Denegado</h2><p>No tienes permiso para acceder a esta aplicación. Contacta al administrador.</p><p><i>Tu email: ${user.email}</i></p></div>`;
   }
@@ -79,6 +80,8 @@ function showTab(tabName, clickedLink) {
   } else if (tabName === 'fondoscaja') {
     cargarListasFondosCaja();
     cargarResumenSaldos();
+  } else if (tabName === 'otroshaberes') {
+    cargarDatosInicialesOtrosHaberes();
   }
 }
 
@@ -183,61 +186,6 @@ function mostrarColaboradores() {
       showMessage(container.id, `Error: ${error.message}`, 'error');
     })
     .obtenerColaboradores();
-}
-
-function solicitarCalculoNomina(event) {
-  event.preventDefault();
-  const mes = document.getElementById('nomina-mes').value;
-  const anio = document.getElementById('nomina-anio').value;
-  const loading = document.getElementById('loadingNomina');
-  const container = document.getElementById('resultadosNomina');
-
-  loading.style.display = 'block';
-  container.innerHTML = '';
-
-  google.script.run
-    .withSuccessHandler(resultados => {
-      loading.style.display = 'none';
-      if (resultados.error) {
-        container.innerHTML = `<div class="message error">${resultados.error}</div>`;
-        return;
-      }
-      if (!resultados || resultados.length === 0) {
-        container.innerHTML = '<div class="message">No se encontraron datos para el período seleccionado.</div>';
-        return;
-      }
-      let table = `
-        <table>
-          <thead>
-            <tr>
-              <th>Nombre</th>
-              <th>Sueldo Base</th>
-              <th>Días Trab.</th>
-              <th>Faltas Injust.</th>
-              <th>Sueldo Calculado</th>
-            </tr>
-          </thead>
-          <tbody>
-      `;
-      resultados.forEach(res => {
-        table += `
-          <tr>
-            <td>${res.nombre}</td>
-            <td>${formatearMoneda(res.sueldoBase)}</td>
-            <td>${res.diasTrabajados}</td>
-            <td>${res.faltasInjustificadas}</td>
-            <td><strong>${formatearMoneda(res.sueldoCalculado)}</strong></td>
-          </tr>
-        `;
-      });
-      table += '</tbody></table>';
-      container.innerHTML = table;
-    })
-    .withFailureHandler(error => {
-      loading.style.display = 'none';
-      showMessage(container.id, `Error: ${error.message}`, 'error');
-    })
-    .calcularNomina(mes, anio);
 }
 
 function formatearMoneda(valor) {
@@ -511,14 +459,20 @@ function solicitarEliminarRegistroFromButton(btn) {
 function registrarProyecto(event) {
   event.preventDefault();
   const proyecto = {
-    project_code: document.getElementById('project_code').value,
-    project_name: document.getElementById('project_name').value,
-    registration_date: document.getElementById('registration_date').value,
-    project_address: document.getElementById('project_address').value,
-    project_georeference: document.getElementById('project_georeference').value,
-    project_contact: document.getElementById('project_contact').value,
-    project_observation: document.getElementById('project_observation').value
-  };
+  project_code: document.getElementById('project_code').value,
+  project_name: document.getElementById('project_name').value,
+  registration_date: document.getElementById('registration_date').value,
+  client_name: document.getElementById('client_name').value,
+  client_rut: document.getElementById('client_rut').value,
+  project_stage: document.getElementById('project_stage').value,
+  project_status: document.getElementById('project_status').value,
+  client_phone: document.getElementById('client_phone').value,
+  contact_phone: document.getElementById('contact_phone').value,
+  project_address: document.getElementById('project_address').value,
+  project_georeference: document.getElementById('project_georeference').value,
+  project_contact: document.getElementById('project_contact').value,
+  project_observation: document.getElementById('project_observation').value
+};
 
   showMessage('msgProyecto', 'Registrando proyecto...', 'info');
   google.script.run
@@ -540,6 +494,11 @@ function cancelarEdicion() {
   document.getElementById('project_code').readOnly = false;
   document.getElementById('btnSubmitProject').textContent = 'Registrar Proyecto';
   document.getElementById('btnCancelEdit').style.display = 'none';
+
+  // Ocultar y reiniciar la opción de duplicar
+  document.getElementById('duplicar-container').style.display = 'none';
+  document.getElementById('duplicarProyectoCheck').checked = false;
+
   document.querySelector('#formProyecto').onsubmit = function(e) {
     e.preventDefault();
     registrarProyecto(e);
@@ -566,7 +525,13 @@ function cargarProyectos() {
             <tr>
               <th>Código</th>
               <th>Nombre</th>
+              <th>Estado</th>
               <th>Fecha Registro</th>
+              <th>Cliente</th>
+              <th>RUT Cliente</th>
+              <th>Etapa</th>
+              <th>Tel. Cliente</th>
+              <th>Tel. Contacto</th>
               <th>Dirección</th>
               <th>Georeferencia</th>
               <th>Contacto</th>
@@ -577,21 +542,26 @@ function cargarProyectos() {
           <tbody>
       `;
       data.forEach(proyecto => {
-        const obsEscapadas = proyecto.project_observation.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const statusClass = proyecto.project_status === 'Proyecto Activo' ? 'status-active' : 
+                          proyecto.project_status === 'Proyecto Cerrado' ? 'status-closed' : 'status-scheduled';
         table += `
-          <tr>
+          <tr data-status="${proyecto.project_status}">
             <td>${proyecto.project_code}</td>
             <td>${proyecto.project_name}</td>
+            <td><span class="status-badge ${statusClass}">${proyecto.project_status}</span></td>
             <td>${proyecto.registration_date}</td>
+            <td>${proyecto.client_name}</td>
+            <td>${proyecto.client_rut}</td>
+            <td>${proyecto.project_stage}</td>
+            <td>${proyecto.client_phone}</td>
+            <td>${proyecto.contact_phone}</td>
             <td>${proyecto.project_address}</td>
             <td>${proyecto.project_georeference}</td>
             <td>${proyecto.project_contact}</td>
             <td>${proyecto.project_observation}</td>
             <td>
-              <div class="actions">
-                <button class="btn btn-secondary" onclick="editarProyecto('${proyecto.project_code}')">Editar</button>
-                <button class="btn btn-danger" onclick="eliminarProyecto('${proyecto.project_code}')">Eliminar</button>
-              </div>
+              <button class="btn btn-secondary" onclick="editarProyecto('${proyecto.project_code}')">Editar</button>
+              <button class="btn btn-danger" onclick="eliminarProyecto('${proyecto.project_code}')">Eliminar</button>
             </td>
           </tr>
         `;
@@ -608,56 +578,117 @@ function cargarProyectos() {
 
 function editarProyecto(projectCode) {
   const rows = document.querySelectorAll('#tablaProyectos table tbody tr');
-  const tableRow = Array.from(rows).find(row => row.cells[0].textContent === projectCode);
-  if (!tableRow) return;
+  let targetRow = null;
+  
+  rows.forEach(row => {
+    if (row.cells[0].textContent.trim() === projectCode) {
+      targetRow = row;
+    }
+  });
+  
+  if (!targetRow) {
+    alert('No se pudo encontrar el proyecto para editar');
+    return;
+  }
 
-  const cells = tableRow.cells;
-  document.getElementById('project_code').value = cells[0].textContent;
-  document.getElementById('project_name').value = cells[1].textContent;
-  document.getElementById('registration_date').value = cells[2].textContent;
-  document.getElementById('project_address').value = cells[3].textContent;
-  document.getElementById('project_georeference').value = cells[4].textContent;
-  document.getElementById('project_contact').value = cells[5].textContent;
-  document.getElementById('project_observation').value = cells[6].textContent;
+  const cells = targetRow.cells;
+  
+  // Asignar valores según el orden actual de columnas
+  document.getElementById('project_code').value = cells[0].textContent.trim();
+  document.getElementById('project_name').value = cells[1].textContent.trim();
+  
+  // Extraer el texto del span con clase status-badge
+  const statusBadge = cells[2].querySelector('.status-badge');
+  const statusValue = statusBadge ? statusBadge.textContent.trim() : 'Proyecto Activo';
+  document.getElementById('project_status').value = statusValue;
+  
+  document.getElementById('registration_date').value = cells[3].textContent.trim();
+  document.getElementById('client_name').value = cells[4].textContent.trim();
+  document.getElementById('client_rut').value = cells[5].textContent.trim();
+  document.getElementById('project_stage').value = cells[6].textContent.trim();
+  document.getElementById('client_phone').value = cells[7].textContent.trim();
+  document.getElementById('contact_phone').value = cells[8].textContent.trim();
+  document.getElementById('project_address').value = cells[9].textContent.trim();
+  document.getElementById('project_georeference').value = cells[10].textContent.trim();
+  document.getElementById('project_contact').value = cells[11].textContent.trim();
+  document.getElementById('project_observation').value = cells[12].textContent.trim();
 
+  // Configurar el formulario para modo edición
   document.getElementById('project_code').readOnly = true;
-  document.getElementById('btnSubmitProject').textContent = 'Actualizar Proyecto';
-  document.getElementById('btnCancelEdit').style.display = 'block';
-  document.querySelector('#formProyecto').onsubmit = function(e) {
+  document.querySelector('#formProyecto button[type="submit"]').textContent = 'Actualizar Proyecto';
+
+  document.getElementById('btnCancelEdit').style.display = 'inline-block';
+  document.getElementById('duplicar-container').style.display = 'block';
+  
+  // Cambiar el comportamiento del formulario
+  const form = document.querySelector('#formProyecto');
+  form.onsubmit = function(e) {
     e.preventDefault();
     actualizarProyecto();
   };
+  
+  // Hacer scroll al formulario
+  document.getElementById('formProyecto').scrollIntoView({ behavior: 'smooth' });
 }
 
 function actualizarProyecto() {
+  const isDuplicating = document.getElementById('duplicarProyectoCheck').checked;
+
   const proyecto = {
     project_code: document.getElementById('project_code').value,
     project_name: document.getElementById('project_name').value,
     registration_date: document.getElementById('registration_date').value,
+    client_name: document.getElementById('client_name').value,
+    client_rut: document.getElementById('client_rut').value,
+    project_stage: document.getElementById('project_stage').value,
+    project_status: document.getElementById('project_status').value,
+    client_phone: document.getElementById('client_phone').value,
+    contact_phone: document.getElementById('contact_phone').value,
     project_address: document.getElementById('project_address').value,
     project_georeference: document.getElementById('project_georeference').value,
     project_contact: document.getElementById('project_contact').value,
     project_observation: document.getElementById('project_observation').value
   };
 
-  showMessage('msgProyecto', 'Actualizando proyecto...', 'info');
-  google.script.run
-    .withSuccessHandler(response => {
-      showMessage('msgProyecto', response, response.includes('correctamente') ? 'success' : 'error');
-      if (response.includes('correctamente')) {
-        document.getElementById('formProyecto').reset();
-        document.getElementById('registration_date').valueAsDate = new Date();
-        document.getElementById('project_code').readOnly = false;
-        document.querySelector('#formProyecto button[type="submit"]').textContent = 'Registrar Proyecto';
-        document.querySelector('#formProyecto').onsubmit = function(e) {
-          e.preventDefault();
-          registrarProyecto(e);
-        };
-        cargarProyectos();
-      }
-    })
-    .withFailureHandler(error => showMessage('msgProyecto', `Error: ${error.message}`, 'error'))
-    .actualizarProyecto(proyecto);
+  // Limpiar y restaurar el formulario en una función para no repetir código
+  const resetFormToRegisterMode = () => {
+      document.getElementById('formProyecto').reset();
+      document.getElementById('registration_date').valueAsDate = new Date();
+      document.getElementById('project_code').readOnly = false;
+      document.querySelector('#formProyecto button[type="submit"]').textContent = 'Registrar Proyecto';
+      document.getElementById('btnCancelEdit').style.display = 'none';
+      document.getElementById('duplicar-container').style.display = 'none';
+      document.getElementById('duplicarProyectoCheck').checked = false;
+      const form = document.querySelector('#formProyecto');
+      form.onsubmit = function(e) { e.preventDefault(); registrarProyecto(e); };
+      cargarProyectos();
+  };
+
+  if (isDuplicating) {
+    // --- LÓGICA PARA DUPLICAR (LLAMA A registrarProyecto) ---
+    showMessage('msgProyecto', 'Creando duplicado del proyecto...', 'info');
+    google.script.run
+      .withSuccessHandler(response => {
+        showMessage('msgProyecto', response, response.includes('correctamente') ? 'success' : 'error');
+        if (response.includes('correctamente')) {
+          resetFormToRegisterMode();
+        }
+      })
+      .withFailureHandler(error => showMessage('msgProyecto', `Error: ${error.message}`, 'error'))
+      .registrarProyecto(proyecto);
+  } else {
+    // --- LÓGICA ORIGINAL PARA ACTUALIZAR ---
+    showMessage('msgProyecto', 'Actualizando proyecto...', 'info');
+    google.script.run
+      .withSuccessHandler(response => {
+        showMessage('msgProyecto', response, response.includes('correctamente') ? 'success' : 'error');
+        if (response.includes('correctamente')) {
+          resetFormToRegisterMode();
+        }
+      })
+      .withFailureHandler(error => showMessage('msgProyecto', `Error: ${error.message}`, 'error'))
+      .actualizarProyecto(proyecto);
+  }
 }
 
 function eliminarProyecto(projectCode) {
@@ -692,23 +723,34 @@ function buscarProyectos(searchTerm) {
 // FUNCIONES PARA FONDOS DE CAJA
 // ===============================================================
 
+// REEMPLAZA la función 'cargarListasFondosCaja' existente con esta versión corregida:
+
 function cargarListasFondosCaja() {
-  // Cargar tipos de registro
+  // Cargar tipos de registro para ambos selectores
   google.script.run
     .withSuccessHandler(function(tipos) {
+      // 1. Popula el dropdown del formulario de registro
       const selectTipoRegistro = document.getElementById('tipo_registro_caja');
       let tiposOptions = '<option value="">Seleccione un tipo...</option>';
       tipos.forEach(tipo => {
         tiposOptions += `<option value="${tipo}">${tipo}</option>`;
       });
       selectTipoRegistro.innerHTML = tiposOptions;
+
+      // 2. (CORRECCIÓN) Popula también el dropdown del filtro de balance
+      const selectTipoBalance = document.getElementById('balance-tipo-movimiento');
+      let balanceOptions = '<option value="TODOS">Todos los Tipos</option>';
+      tipos.forEach(tipo => {
+        balanceOptions += `<option value="${tipo}">${tipo}</option>`;
+      });
+      selectTipoBalance.innerHTML = balanceOptions;
     })
     .withFailureHandler(function(error) {
       showMessage('msgFondosCaja', `Error al cargar tipos de registro: ${error}`, 'error');
     })
     .obtenerTiposRegistro();
 
-  // Cargar colaboradores
+  // Cargar colaboradores (esta parte no cambia)
   google.script.run
     .withSuccessHandler(function(colaboradores) {
       const selectColaborador = document.getElementById('colaborador_caja');
@@ -730,78 +772,66 @@ function toggleMontoInputs() {
   montoInput.placeholder = tipoMovimiento === 'entrada' ? 'Ingrese el monto a recibir' : 'Ingrese el monto a entregar';
 }
 
+// REEMPLAZA la función 'registrarMovimientoCaja' existente con esta:
+
 function registrarMovimientoCaja(event) {
   event.preventDefault();
-  
+
   const movimiento = {
     idColaborador: document.getElementById('colaborador_caja').value,
     tipoRegistro: document.getElementById('tipo_registro_caja').value,
     tipoMovimiento: document.getElementById('tipo_movimiento').value,
     monto: parseFloat(document.getElementById('monto_caja').value),
-    detalle: document.getElementById('detalle_caja').value
+    detalle: document.getElementById('detalle_caja').value.trim() // Usamos .trim() para limpiar espacios
   };
 
+  // --- INICIO DE LA VALIDACIÓN ---
+  // Si el tipo es "RENDICIONES", el detalle no puede estar vacío.
+  if (movimiento.tipoRegistro === 'RENDICIONES' && !movimiento.detalle) {
+    showMessage('msgFondosCaja', 'Error: Para las rendiciones, el campo "Detalle de la transacción" es obligatorio.', 'error');
+    return; // Detiene la ejecución de la función
+  }
+  // --- FIN DE LA VALIDACIÓN ---
+
   showMessage('msgFondosCaja', 'Registrando movimiento...', 'info');
-  
+
   google.script.run
     .withSuccessHandler(function(response) {
-      const container = document.getElementById('msgFondosCaja');
-      container.innerHTML = '';
-      if (response && typeof response === 'object') {
-        if (!response.success) {
-          showMessage('msgFondosCaja', response.message || 'Error desconocido', 'error');
-          return;
+      showMessage('msgFondosCaja', response.message, response.success ? 'success' : 'error');
+      const valeActionsContainer = document.getElementById('vale-actions-container');
+
+      if (response.success) {
+        document.getElementById('formFondosCaja').reset();
+        cargarResumenSaldos(); // Actualiza la tabla de saldos
+
+        if (response.idRegistro && response.pdfUrl) {
+          // Si fue una SALIDA y se generó un vale, muestra los botones en su contenedor
+          valeActionsContainer.innerHTML = `
+            <button class="btn btn-secondary" onclick="enviarCorreoManualmente('${response.idRegistro}')">Enviar Vale por Correo</button>
+            <button class="btn" onclick="imprimirVale('${response.pdfUrl}')">Imprimir Vale (PDF)</button>
+          `;
+        } else {
+          // Si fue una ENTRADA o no se generó un vale, limpia el contenedor de botones
+          valeActionsContainer.innerHTML = '';
         }
-
-        // Mostrar mensaje y botones si existen URLs
-        const msgDiv = document.createElement('div');
-        msgDiv.className = 'message ' + (response.success ? 'success' : 'error');
-        msgDiv.textContent = response.message || '';
-        container.appendChild(msgDiv);
-
-        if (response.valeUrl) {
-          const link = document.createElement('a');
-          link.href = response.valeUrl;
-          link.target = '_blank';
-          link.textContent = 'Abrir Vale (Doc)';
-          link.style.marginLeft = '8px';
-          container.appendChild(link);
-
-          const btnAbrir = document.createElement('button');
-          btnAbrir.className = 'btn';
-          btnAbrir.textContent = 'Abrir Doc';
-          btnAbrir.onclick = function() { window.open(response.valeUrl, '_blank'); };
-          btnAbrir.style.marginLeft = '8px';
-          container.appendChild(btnAbrir);
-        }
-
-        if (response.pdfUrl) {
-          const linkPdf = document.createElement('a');
-          linkPdf.href = response.pdfUrl;
-          linkPdf.target = '_blank';
-          linkPdf.textContent = 'Abrir Vale (PDF)';
-          linkPdf.style.marginLeft = '8px';
-          container.appendChild(linkPdf);
-
-          const btnPdf = document.createElement('button');
-          btnPdf.className = 'btn';
-          btnPdf.textContent = 'Abrir PDF';
-          btnPdf.onclick = function() { window.open(response.pdfUrl, '_blank'); };
-          btnPdf.style.marginLeft = '8px';
-          container.appendChild(btnPdf);
-        }
-      } else {
-        showMessage('msgFondosCaja', response, 'success');
       }
-      document.getElementById('formFondosCaja').reset();
-      cargarResumenSaldos();
     })
-    .withFailureHandler(function(error) {
-      showMessage('msgFondosCaja', `Error: ${error}`, 'error');
-    })
-    .registrarMovimientoCaja(movimiento);
+  .registrarMovimientoCaja(movimiento);
 }
 
+function enviarCorreoManualmente(idRegistro) {
+  const container = document.getElementById('msgFondosCaja');
+  showMessage(container.id, 'Enviando correo, por favor espere...', 'info');
+
+  google.script.run
+    .withSuccessHandler(function(response) {
+      showMessage(container.id, response.message, response.success ? 'success' : 'error');
+    })
+    .withFailureHandler(function(error) {
+      showMessage(container.id, `Error al enviar correo: ${error.message}`, 'error');
+    })
+    .enviarValePorCorreo(idRegistro);
+}
 function imprimirVale(url) {
   // Abre el documento en una nueva pestaña; el usuario puede usar la función de impresión del navegador.
   window.open(url, '_blank');
@@ -879,7 +909,10 @@ document.addEventListener('DOMContentLoaded', function() {
           const today = new Date();
           document.getElementById('bon-fecha-hasta').valueAsDate = today;
           document.getElementById('bon-fecha-desde').valueAsDate = new Date(today.getFullYear(), today.getMonth(), 1);
-          cargarBonificaciones();
+          
+          // Limpiamos la tabla y el spinner, ya no cargamos automáticamente
+          document.getElementById('tablaBonificaciones').innerHTML = '<div class="message info">Seleccione un rango de fechas y presione "Cargar" para ver los resultados.</div>';
+          document.getElementById('loadingBonificaciones').style.display = 'none';
         }, 100);
       });
     }
@@ -960,3 +993,292 @@ document.addEventListener('DOMContentLoaded', function() {
       })
       .guardarBonificacionesEnHoja(desde, hasta, filtro);
   }
+
+  function filtrarPorEstado(estado) {
+  const rows = document.querySelectorAll('#tablaProyectos table tbody tr');
+  const buttons = document.querySelectorAll('.btn-filter');
+  
+  // Actualizar botones activos
+  buttons.forEach(btn => btn.classList.remove('active'));
+  if (estado === 'TODOS') {
+    document.getElementById('filter-todos').classList.add('active');
+  } else if (estado === 'Proyecto Activo') {
+    document.getElementById('filter-activo').classList.add('active');
+  } else if (estado === 'Proyecto Cerrado') {
+    document.getElementById('filter-cerrado').classList.add('active');
+  } else if (estado === 'Proyecto Programado') {
+    document.getElementById('filter-programado').classList.add('active');
+  }
+  
+  // Filtrar filas
+  rows.forEach(row => {
+    if (estado === 'TODOS') {
+      row.style.display = '';
+    } else {
+      const rowStatus = row.getAttribute('data-status');
+      row.style.display = rowStatus === estado ? '' : 'none';
+    }
+  });
+
+  // Manejar el checkbox de duplicar proyecto
+  const duplicarCheck = document.getElementById('duplicarProyectoCheck');
+  if(duplicarCheck) {
+    duplicarCheck.addEventListener('change', function() {
+      const projectCodeInput = document.getElementById('project_code');
+      if (this.checked) {
+        projectCodeInput.readOnly = false;
+        projectCodeInput.focus();
+      } else {
+        projectCodeInput.readOnly = true;
+      }
+    });
+  }
+}
+
+
+let datosBalanceActual = null; // Variable global para guardar los datos consultados
+
+function consultarBalance(event) {
+  if (event) event.preventDefault();
+
+  const filtros = {
+    fechaDesde: document.getElementById('balance-fecha-desde').value,
+    fechaHasta: document.getElementById('balance-fecha-hasta').value,
+    tipoMovimiento: document.getElementById('balance-tipo-movimiento').value
+  };
+
+  const loading = document.getElementById('loadingBalance');
+  const container = document.getElementById('tablaBalanceContainer');
+  const actions = document.getElementById('balance-actions');
+
+  loading.style.display = 'block';
+  loading.textContent = 'Consultando balance...';
+  container.innerHTML = '';
+  actions.style.display = 'none';
+  datosBalanceActual = null;
+
+  google.script.run
+    .withSuccessHandler(response => {
+      loading.style.display = 'none';
+      if (response.error) {
+        showMessage('msgBalance', response.error, 'error');
+        return;
+      }
+      datosBalanceActual = response; // Guardar datos para exportar
+      renderBalanceTabla(response);
+      actions.style.display = 'flex';
+    })
+    .withFailureHandler(error => {
+      loading.style.display = 'none';
+      showMessage('msgBalance', `Error: ${error.message}`, 'error');
+    })
+    .obtenerBalanceFiltrado(filtros);
+}
+
+function renderBalanceTabla(response) {
+  const container = document.getElementById('tablaBalanceContainer');
+  if (!response || !response.data || response.data.length === 0) {
+    container.innerHTML = '<div class="message info">No se encontraron movimientos con los filtros seleccionados.</div>';
+    return;
+  }
+
+  // 1. Añadir el encabezado para "Detalle"
+  let table = `<table><thead><tr>
+                  <th>Fecha</th>
+                  <th>Colaborador</th>
+                  <th>Entrada</th>
+                  <th>Salida</th>
+                  <th>Saldo Acumulado</th>
+                  <th>Detalle</th>
+                </tr></thead><tbody>`;
+
+  response.data.forEach(row => {
+    // 2. Añadir la celda con el dato del detalle
+    table += `<tr>
+                <td>${row.fecha}</td>
+                <td>${row.nombre}</td>
+                <td style="text-align: right; color: green;">${formatearMoneda(row.entrada)}</td>
+                <td style="text-align: right; color: red;">${formatearMoneda(row.salida)}</td>
+                <td style="text-align: right; font-weight: bold;">${formatearMoneda(row.saldo)}</td>
+                <td>${row.detalle || ''}</td>
+              </tr>`;
+  });
+
+  // 3. Ajustar los colspan en el pie de página para la nueva columna
+  table += `</tbody>
+            <tfoot>
+              <tr style="background-color: #f0f8fc;">
+                <td colspan="2" style="text-align: right; font-weight: bold;">TOTALES</td>
+                <td style="text-align: right; font-weight: bold; color: green;">${formatearMoneda(response.summary.totalEntradas)}</td>
+                <td style="text-align: right; font-weight: bold; color: red;">${formatearMoneda(response.summary.totalSalidas)}</td>
+                <td colspan="2"></td>
+              </tr>
+              <tr style="background-color: #e8f4f8;">
+                <td colspan="5" style="text-align: right; font-weight: bold;">DIFERENCIA (ENTRADAS - SALIDAS)</td>
+                <td style="text-align: right; font-weight: bold;">${formatearMoneda(response.summary.diferencia)}</td>
+              </tr>
+            </tfoot></table>`;
+  container.innerHTML = table;
+}
+
+function guardarBalance() {
+  if (!datosBalanceActual) {
+    showMessage('msgBalance', 'Primero debes consultar un balance para poder guardarlo.', 'error');
+    return;
+  }
+  showMessage('msgBalance', 'Guardando datos en la hoja de cálculo...', 'info');
+
+  google.script.run
+    .withSuccessHandler(res => {
+      if (res.success) {
+        showMessage('msgBalance', res.message, 'success');
+      } else {
+        showMessage('msgBalance', res.message, 'error');
+      }
+    })
+    .withFailureHandler(err => showMessage('msgBalance', `Error al guardar: ${err.message}`, 'error'))
+    .guardarBalanceEnHoja(datosBalanceActual);
+}
+
+function exportarBalance() {
+  if (!datosBalanceActual) {
+    showMessage('msgBalance', 'Primero debes consultar un balance.', 'error');
+    return;
+  }
+  showMessage('msgBalance', 'Generando exportación...', 'info');
+  google.script.run
+    .withSuccessHandler(res => {
+      if(res.success && res.url) {
+        showMessage('msgBalance', '¡Exportación lista! Abriendo en nueva pestaña...', 'success');
+        window.open(res.url, '_blank');
+      } else {
+        showMessage('msgBalance', res.message, 'error');
+      }
+    })
+    .withFailureHandler(err => showMessage('msgBalance', `Error: ${err.message}`, 'error'))
+    .exportarBalanceComoNuevaHoja(datosBalanceActual);
+}
+
+// ===============================================================
+// FUNCIONES PARA OTROS HABERES
+// ===============================================================
+
+function cargarDatosInicialesOtrosHaberes() {
+  // Configurar fechas por defecto para los filtros
+  const today = new Date();
+  document.getElementById('haber-fecha').valueAsDate = today;
+  document.getElementById('haber-filtro-hasta').valueAsDate = today;
+  document.getElementById('haber-filtro-desde').valueAsDate = new Date(today.getFullYear(), today.getMonth(), 1);
+
+  // Cargar las listas desplegables
+  google.script.run
+    .withSuccessHandler(listas => {
+      const selectColaborador = document.getElementById('haber-colaborador');
+      let colOptions = '<option value="">Seleccione...</option>';
+      listas.colaboradores.forEach(c => { colOptions += `<option value="${c.id}">${c.nombre}</option>`; });
+      selectColaborador.innerHTML = colOptions;
+
+      const selectTipo = document.getElementById('haber-tipo');
+      let tipoOptions = '<option value="">Seleccione...</option>';
+      listas.tiposHaber.forEach(t => { tipoOptions += `<option value="${t}">${t}</option>`; });
+      selectTipo.innerHTML = tipoOptions;
+
+      // Una vez cargadas las listas, mostrar la tabla de registros
+      mostrarOtrosHaberes();
+    })
+    .obtenerListasParaOtrosHaberes();
+}
+
+function registrarOtroHaber(event) {
+  event.preventDefault();
+  const haber = {
+    fecha: document.getElementById('haber-fecha').value,
+    idColaborador: document.getElementById('haber-colaborador').value,
+    tipoHaber: document.getElementById('haber-tipo').value,
+    monto: document.getElementById('haber-monto').value,
+    comentario: document.getElementById('haber-comentario').value
+  };
+
+  showMessage('msgOtroHaber', 'Guardando registro...', 'info');
+  google.script.run
+    .withSuccessHandler(response => {
+      showMessage('msgOtroHaber', response, response.includes('correctamente') ? 'success' : 'error');
+      if (response.includes('correctamente')) {
+        document.getElementById('formOtroHaber').reset();
+        document.getElementById('haber-fecha').valueAsDate = new Date(); // Resetear fecha a hoy
+        mostrarOtrosHaberes(); // Actualizar la tabla
+      }
+    })
+    .registrarOtroHaber(haber);
+}
+
+function mostrarOtrosHaberes() {
+  const loading = document.getElementById('loadingOtrosHaberes');
+  const container = document.getElementById('tablaOtrosHaberes');
+  loading.style.display = 'block';
+  container.innerHTML = '';
+
+  const filtros = {
+    fechaDesde: document.getElementById('haber-filtro-desde').value,
+    fechaHasta: document.getElementById('haber-filtro-hasta').value,
+    busqueda: document.getElementById('haber-filtro-busqueda').value
+  };
+
+  google.script.run
+    .withSuccessHandler(data => {
+      loading.style.display = 'none';
+      if (data.error) {
+        container.innerHTML = `<div class="message error">${data.error}</div>`;
+        return;
+      }
+      if (data.length === 0) {
+        container.innerHTML = '<div class="message">No se encontraron registros con los filtros aplicados.</div>';
+        return;
+      }
+
+      let table = `<table><thead><tr>
+                      <th>Fecha</th>
+                      <th>Colaborador</th>
+                      <th>Tipo de Haber</th>
+                      <th>Monto</th>
+                      <th>Comentario</th>
+                      <th>Acciones</th>
+                    </tr></thead><tbody>`;
+      data.forEach(item => {
+        table += `<tr>
+                    <td>${item.fecha}</td>
+                    <td>${item.nombreColaborador}</td>
+                    <td>${item.tipoHaber}</td>
+                    <td>${formatearMoneda(item.monto)}</td>
+                    <td>${item.comentario}</td>
+                    <td>
+                      <button class="btn btn-sm btn-danger" onclick="solicitarEliminarHaber('${item.idHaber}')">Eliminar</button>
+                    </td>
+                  </tr>`;
+      });
+      table += '</tbody></table>';
+      container.innerHTML = table;
+    })
+    .obtenerOtrosHaberes(filtros);
+}
+
+function solicitarEliminarHaber(idHaber) {
+  if (confirm('¿Está seguro de que desea eliminar este registro? Esta acción no se puede deshacer.')) {
+    google.script.run
+      .withSuccessHandler(response => {
+        alert(response);
+        if (response.includes('correctamente')) {
+          mostrarOtrosHaberes();
+        }
+      })
+      .eliminarOtroHaber(idHaber);
+  }
+}
+
+function openNominaPage(){
+  if(webAppUrl){
+    window.open(webAppUrl + '?page=nomina', '_blank');
+  } else {
+    alert("La URL de la aplicación aún no se ha cargado. Por favor, espere y vuelva a intentarlo.");
+  }
+}

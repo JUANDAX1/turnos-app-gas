@@ -1,5 +1,83 @@
 /**
  * @OnlyCurrentDoc
+ * Este script se ejecuta automáticamente cuando el documento es abierto.
+ * Comprueba si el usuario tiene permiso para ver el contenido.
+ * Si no está autorizado, oculta todas las hojas y muestra una de "Acceso Denegado".
+ */
+
+// --- CONFIGURACIÓN ---
+// ¡IMPORTANTE! Añade aquí los correos de los usuarios que SÍ pueden ver el contenido.
+const USUARIOS_AUTORIZADOS = [
+  'juandanielcl77@gmail.com',
+  'm.melillanca@gmail.com',
+  //'otro_usuario_autorizado@email.com'
+];
+
+// Nombre de la hoja que se muestra cuando el acceso es denegado.
+const HOJA_BLOQUEO = 'Acceso Denegado';
+
+
+/**
+ * Función principal que se ejecuta al abrir el documento.
+ * @param {Object} e - Objeto del evento (proporcionado por el activador onOpen).
+ */
+function onOpen(e) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+  const usuarioActual = Session.getActiveUser().getEmail();
+
+  // Comprueba si el usuario actual está en la lista de autorizados.
+  if (USUARIOS_AUTORIZADOS.includes(usuarioActual)) {
+    // Si está autorizado, nos aseguramos de que pueda ver todas las hojas.
+    mostrarHojas(ss);
+  } else {
+    // Si NO está autorizado, le bloqueamos el acceso.
+    ocultarHojas(ss);
+    ui.alert(
+      'Acceso No Autorizado',
+      'No tienes permisos para visualizar el contenido de este documento.',
+      ui.ButtonSet.OK
+    );
+  }
+}
+
+/**
+ * Oculta todas las hojas excepto la de bloqueo.
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} spreadsheet - La hoja de cálculo activa.
+ */
+function ocultarHojas(spreadsheet) {
+  const todasLasHojas = spreadsheet.getSheets();
+  todasLasHojas.forEach(hoja => {
+    if (hoja.getName() !== HOJA_BLOQUEO) {
+      hoja.hideSheet();
+    }
+  });
+  // Nos aseguramos que la hoja de bloqueo sí esté visible.
+  const hojaBloqueo = spreadsheet.getSheetByName(HOJA_BLOQUEO);
+  if (hojaBloqueo) {
+    hojaBloqueo.showSheet();
+  }
+}
+
+/**
+ * Muestra todas las hojas y oculta la de bloqueo.
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} spreadsheet - La hoja de cálculo activa.
+ */
+function mostrarHojas(spreadsheet) {
+  const todasLasHojas = spreadsheet.getSheets();
+  todasLasHojas.forEach(hoja => {
+    if (hoja.getName() === HOJA_BLOQUEO) {
+      hoja.hideSheet();
+    } else {
+      hoja.showSheet();
+    }
+  });
+}
+
+
+
+/**
+ * @OnlyCurrentDoc
  *
  * El código anterior es una directiva para mejorar el autocompletado de Apps Script.
  */
@@ -36,6 +114,8 @@ const HOJA_PROYECTOS = "Project_list";
 const HOJA_CONTABILIDAD = "contabilidad1";
 const HOJA_BONIFICACIONES = "Bonificaciones";
 const HOJA_PONDERACION = "ponderacion";
+const HOJA_PONDERACION_ESTANDAR = "ponderacion_estandar";
+const HOJA_OTROS_HABERES = "OtrosHaberes";
 
 const ROLES = {
   ADMIN: "ADMINISTRADOR",
@@ -53,6 +133,13 @@ function doGet(e) {
       .evaluate()
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
       .setTitle("Ponderación de Bonos");
+  }
+  
+  if (e.parameter.page === 'nomina') { // <-- NUEVA CONDICIÓN
+    return HtmlService.createTemplateFromFile('nomina.html')
+      .evaluate()
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+      .setTitle("Informe Maestro de Nómina");
   }
   
   // Sirve la página principal por defecto
@@ -76,12 +163,13 @@ function include(filename) {
 }
 
 /**
- * Verifica el email del usuario activo contra la lista de usuarios autorizados.
- * @returns {object} Un objeto con el email y el rol del usuario.
+ * Verifica el email del usuario activo y AHORA también devuelve la URL de la Web App.
+ * @returns {object} Un objeto con el email, el rol y la url de la aplicación.
  */
 function verificarAcceso() {
   try {
     const email = Session.getActiveUser().getEmail();
+    const url = ScriptApp.getService().getUrl(); // <-- Obtenemos la URL aquí
     const ss = SpreadsheetApp.openById(getSpreadsheetId());
     const sheetUsuarios = ss.getSheetByName(HOJA_USUARIOS);
     const data = sheetUsuarios.getDataRange().getValues();
@@ -91,11 +179,12 @@ function verificarAcceso() {
       const userRol = data[i][1].toString().trim().toUpperCase();
 
       if (userEmail === email.toLowerCase()) {
-        return { email: email, rol: userRol };
+        // Devolvemos todo junto: email, rol y la URL.
+        return { email: email, rol: userRol, url: url };
       }
     }
     
-    return { email: email, rol: ROLES.SIN_ACCESO };
+    return { email: email, rol: ROLES.SIN_ACCESO, url: url };
   } catch (e) {
     console.error("Error en verificarAcceso:", e);
     return { email: Session.getActiveUser().getEmail(), rol: ROLES.SIN_ACCESO, error: e.message };
@@ -237,8 +326,17 @@ function obtenerDatosParaAsistenciaGrid(fechaSeleccionada) {
     const asignaciones = sheetConfig.getRange("G2:G").getValues().flat().filter(String);
     const vehiculos = sheetConfig.getRange("K2:K").getValues().flat().filter(String);
 
-    // Obtener lista de proyectos
-    const proyectos = sheetProyectos ? sheetProyectos.getRange("B2:B").getValues().flat().filter(String) : [];
+    // Obtener lista de proyectos ACTIVOS
+    let proyectos = [];
+    if (sheetProyectos) {
+      // Leemos desde la columna A hasta la G (donde está el estado)
+      const proyectosData = sheetProyectos.getRange("A2:G" + sheetProyectos.getLastRow()).getValues(); 
+      proyectos = proyectosData
+        // Filtramos las filas donde la columna de estado (índice 6) sea "Proyecto Activo"
+        .filter(row => row[6] === 'Proyecto Activo') 
+        // De las filas filtradas, obtenemos solo el nombre del proyecto (columna B, índice 1)
+        .map(row => row[1]); 
+    }
 
     // 3. Obtener registros de la fecha seleccionada
     const fecha = fechaSeleccionada ? new Date(fechaSeleccionada.replace(/-/g, '\/') + ' 00:00:00') : new Date();
@@ -560,12 +658,12 @@ function inicializarSistema() {
     let sheetProyectos = ss.getSheetByName(HOJA_PROYECTOS);
     if (!sheetProyectos) {
       sheetProyectos = ss.insertSheet(HOJA_PROYECTOS);
-      const headers = [["project_code", "project_name", "registration_date", "project_address", "project_georeference", "project_contact", "project_observation", "Timestamp"]];
-      sheetProyectos.getRange(1, 1, 1, 8).setValues(headers).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+      const headers = [["project_code", "project_name", "registration_date", "client_name", "client_rut", "project_stage", "project_status", "client_phone", "contact_phone", "project_address", "project_georeference", "project_contact", "project_observation", "Timestamp"]];
+      sheetProyectos.getRange(1, 1, 1, 14).setValues(headers).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
       sheetProyectos.getRange("A:A").setNumberFormat("@");
       sheetProyectos.getRange("C:C").setNumberFormat("dd/mm/yyyy");
       sheetProyectos.getRange("H:H").setNumberFormat("dd/mm/yyyy hh:mm:ss");
-      sheetProyectos.autoResizeColumns(1, 8);
+      sheetProyectos.autoResizeColumns(1, 14);
     }
 
     // --- Hoja Contabilidad ---
@@ -616,13 +714,106 @@ function inicializarSistema() {
       sheetBonificaciones.getRange(1, 1, 1, 1).setValues(headers).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
       sheetBonificaciones.autoResizeColumns(1, 3);
     }
+
+    // --- Hoja Ponderacion Estandar ---
+    let sheetPonderacionEstandar = ss.getSheetByName(HOJA_PONDERACION_ESTANDAR);
+    if (!sheetPonderacionEstandar) {
+      sheetPonderacionEstandar = ss.insertSheet(HOJA_PONDERACION_ESTANDAR);
+      const headers = [["ID_Colaborador", "NombreCompleto", "Cargo", "PonderacionEstandar"]];
+      sheetPonderacionEstandar.getRange(1, 1, 1, 4).setValues(headers).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+
+      // Poblar con valores iniciales desde la hoja de Colaboradores
+      const colaboradoresData = ss.getSheetByName(HOJA_COLABORADORES).getDataRange().getValues().slice(1);
+      const datosIniciales = colaboradoresData.map(col => {
+        const cargo = (col[2] || '').toLowerCase();
+        let ponderacion = 0;
+        if (cargo.includes('tecnico') || cargo.includes('técnico')) {
+          ponderacion = 65;
+        } else if (cargo.includes('ayudante')) {
+          ponderacion = 35;
+        }
+        return [col[0], col[1], col[2], ponderacion];
+      });
+
+      if (datosIniciales.length > 0) {
+        sheetPonderacionEstandar.getRange(2, 1, datosIniciales.length, 4).setValues(datosIniciales);
+      }
+      sheetPonderacionEstandar.autoResizeColumns(1, 4);
+    }
     
+    // --- Hoja OtrosHaberes ---
+    let sheetOtrosHaberes = ss.getSheetByName(HOJA_OTROS_HABERES);
+    if (!sheetOtrosHaberes) {
+      sheetOtrosHaberes = ss.insertSheet(HOJA_OTROS_HABERES);
+      const headers = [["ID_Haber", "ID_Colaborador", "NombreColaborador", "Fecha", "TipoHaber", "Monto", "Comentario", "Timestamp"]];
+      sheetOtrosHaberes.getRange(1, 1, 1, 8).setValues(headers).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+      sheetOtrosHaberes.getRange("F:F").setNumberFormat("$#,##0"); // Formato de moneda para Monto
+      sheetOtrosHaberes.autoResizeColumns(1, 8);
+    }
+
+    // --- Añadir Tipos de Haber en Hoja Configuracion (Columna R) ---
+    if (configHeaders.indexOf("TiposDeHaber") === -1) {
+        sheetConfig.getRange(1, 18).setValue("TiposDeHaber").setBackground("#2E86AB").setFontColor("white").setFontWeight("bold"); // Columna R es la 18
+        sheetConfig.getRange("R2:R4").setValues([["Bono Extra"], ["Reembolso Gastos"], ["Comisión"]]);
+        sheetConfig.autoResizeColumns(18, 1);
+    }
+
     return "Sistema inicializado correctamente. Todas las hojas han sido creadas y configuradas.";
   } catch (error) {
     console.error("Error en inicializarSistema:", error);
     return `Error al inicializar: ${error.message}`;
   }
 }
+
+/**
+ * Obtiene la lista de ponderaciones estándar por colaborador.
+ * @returns {Array<object>} Un arreglo de objetos con los datos de ponderación estándar.
+ */
+function obtenerPonderacionEstandar() {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_PONDERACION_ESTANDAR);
+    if (!sheet) return [];
+    
+    const data = sheet.getDataRange().getValues().slice(1); // Omitir cabecera
+    return data.map(row => ({
+      id: row[0],
+      nombre: row[1],
+      cargo: row[2],
+      ponderacion: row[3] || 0
+    }));
+  } catch (e) {
+    console.error("Error en obtenerPonderacionEstandar:", e);
+    return { error: e.message };
+  }
+}
+
+/**
+ * Guarda las ponderaciones estándar para todos los colaboradores.
+ * @param {Array<object>} ponderaciones - Arreglo de objetos {id, ponderacion}.
+ * @returns {object} Mensaje de éxito o error.
+ */
+function guardarPonderacionEstandar(ponderaciones) {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_PONDERACION_ESTANDAR);
+    const data = sheet.getRange("A2:A" + sheet.getLastRow()).getValues().flat();
+    
+    ponderaciones.forEach(item => {
+      const rowIndex = data.findIndex(id => id.toString() === item.id.toString());
+      if (rowIndex !== -1) {
+        // La fila es rowIndex + 2 (porque data empieza en A2 y findIndex es 0-based)
+        sheet.getRange(rowIndex + 2, 4).setValue(item.ponderacion);
+      }
+    });
+    
+    return { success: true, message: "Ponderaciones estándar guardadas." };
+  } catch (e) {
+    console.error("Error en guardarPonderacionEstandar:", e);
+    return { success: false, message: e.message };
+  }
+}
+
 /**
  * Consulta los registros de asistencia según un rango de fechas y un colaborador.
  * @param {object} filtros Objeto con fechaDesde, fechaHasta y colaboradorId ('TODOS' para todos).
@@ -720,21 +911,25 @@ function obtenerBonificaciones(fechaDesde, fechaHasta, filtroBusqueda) {
         if (fr < new Date(desde.getFullYear(), desde.getMonth(), desde.getDate()) || fr > new Date(hasta.getFullYear(), hasta.getMonth(), hasta.getDate())) return;
 
         const asignacion = row[4] != null ? row[4].toString().trim() : '';
-        if (!asignacion) return;
-
-        // Extraer nombre del proyecto: si contiene 'PROYECTO' intentar obtener la parte posterior, si no usar la asignacion tal cual
-        let proyectoNombre = '';
         const up = asignacion.toUpperCase();
-        if (up.indexOf('PROYECTO') !== -1) {
-          // Buscar ':' y tomar lo que viene después, si no, quitar la palabra PROYECTO y posibles separadores
-          const idx = asignacion.indexOf(':');
-          if (idx !== -1) proyectoNombre = asignacion.substring(idx + 1).trim();
-          else proyectoNombre = asignacion.replace(/PROYECTO\s*-?\s*/i, '').trim();
-        } else {
-          proyectoNombre = asignacion;
+
+        // Si la asignación NO comienza con "PROYECTO", la ignoramos y pasamos a la siguiente fila.
+        if (!up.startsWith('PROYECTO')) {
+          return; 
         }
 
-        if (!proyectoNombre) return;
+        // Si es un proyecto, extraemos su nombre.
+        let proyectoNombre = '';
+        const idx = asignacion.indexOf(':');
+        if (idx !== -1) {
+          // Si hay ':', tomamos lo que sigue. Ej: "PROYECTO: Nombre" -> "Nombre"
+          proyectoNombre = asignacion.substring(idx + 1).trim();
+        } else {
+          // Si no hay ':', quitamos la palabra "PROYECTO". Ej: "PROYECTO Nombre" -> "Nombre"
+          proyectoNombre = asignacion.replace(/PROYECTO\s*-?\s*/i, '').trim();
+        }
+
+        if (!proyectoNombre) return; // Si el nombre del proyecto queda vacío, lo ignoramos.
 
         // Normalizar claves
         const projKey = proyectoNombre;
@@ -880,16 +1075,22 @@ function registrarProyecto(proyecto) {
       return "Error: Ya existe un proyecto con ese código.";
     }
     
-    sheet.appendRow([
-      proyecto.project_code,
-      proyecto.project_name,
-      new Date(proyecto.registration_date),
-      proyecto.project_address || "",
-      proyecto.project_georeference || "",
-      proyecto.project_contact || "",
-      proyecto.project_observation || "",
-      new Date()
-    ]);
+  sheet.appendRow([
+    proyecto.project_code,
+    proyecto.project_name,
+    new Date(proyecto.registration_date),
+    proyecto.client_name || "",
+    proyecto.client_rut || "",
+    proyecto.project_stage || "",
+    proyecto.project_status || "Proyecto Activo",
+    proyecto.client_phone || "",
+    proyecto.contact_phone || "",
+    proyecto.project_address || "",
+    proyecto.project_georeference || "",
+    proyecto.project_contact || "",
+    proyecto.project_observation || "",
+    new Date()
+  ]);
     
     return "Proyecto registrado correctamente.";
   } catch (error) {
@@ -916,10 +1117,16 @@ function obtenerProyectos() {
       project_code: row[0],
       project_name: row[1],
       registration_date: Utilities.formatDate(new Date(row[2]), Session.getScriptTimeZone(), "yyyy-MM-dd"),
-      project_address: row[3] || "",
-      project_georeference: row[4] || "",
-      project_contact: row[5] || "",
-      project_observation: row[6] || ""
+      client_name: row[3] || "",
+      client_rut: row[4] || "",
+      project_stage: row[5] || "",
+      project_status: row[6] || "Proyecto Activo",
+      client_phone: row[7] || "",
+      contact_phone: row[8] || "",
+      project_address: row[9] || "",
+      project_georeference: row[10] || "",
+      project_contact: row[11] || "",
+      project_observation: row[12] || ""
     }));
     
     return proyectos;
@@ -948,10 +1155,16 @@ function actualizarProyecto(proyecto) {
       if (data[i][0] === proyecto.project_code) {
         sheet.getRange(i + 1, 2).setValue(proyecto.project_name);
         sheet.getRange(i + 1, 3).setValue(new Date(proyecto.registration_date));
-        sheet.getRange(i + 1, 4).setValue(proyecto.project_address || "");
-        sheet.getRange(i + 1, 5).setValue(proyecto.project_georeference || "");
-        sheet.getRange(i + 1, 6).setValue(proyecto.project_contact || "");
-        sheet.getRange(i + 1, 7).setValue(proyecto.project_observation || "");
+        sheet.getRange(i + 1, 4).setValue(proyecto.client_name || "");
+        sheet.getRange(i + 1, 5).setValue(proyecto.client_rut || "");
+        sheet.getRange(i + 1, 6).setValue(proyecto.project_stage || "");
+        sheet.getRange(i + 1, 7).setValue(proyecto.project_status || "Proyecto Activo");
+        sheet.getRange(i + 1, 8).setValue(proyecto.client_phone || "");
+        sheet.getRange(i + 1, 9).setValue(proyecto.contact_phone || "");
+        sheet.getRange(i + 1, 10).setValue(proyecto.project_address || "");
+        sheet.getRange(i + 1, 11).setValue(proyecto.project_georeference || "");
+        sheet.getRange(i + 1, 12).setValue(proyecto.project_contact || "");
+        sheet.getRange(i + 1, 13).setValue(proyecto.project_observation || "");
         
         return "Proyecto actualizado correctamente.";
       }
@@ -1021,113 +1234,72 @@ function obtenerTiposRegistro() {
  * @param {object} movimiento - Objeto con los datos del movimiento.
  * @returns {string} Mensaje de éxito o error.
  */
+
 function registrarMovimientoCaja(movimiento) {
   try {
     const ss = SpreadsheetApp.openById(getSpreadsheetId());
     const sheet = ss.getSheetByName(HOJA_CONTABILIDAD);
-    
-    // Obtener datos del colaborador
     const sheetColaboradores = ss.getSheetByName(HOJA_COLABORADORES);
     const colaboradoresData = sheetColaboradores.getRange("A:B").getValues();
     const colaborador = colaboradoresData.find(row => row[0].toString() === movimiento.idColaborador.toString());
-    
+
     if (!colaborador) {
       return { success: false, message: "Error: Colaborador no encontrado." };
     }
-    
+
+    const idRegistroUnico = new Date().getTime().toString(); // ID único para la transacción
     const entrada = movimiento.tipoMovimiento === "entrada" ? movimiento.monto : 0;
     const salida = movimiento.tipoMovimiento === "salida" ? movimiento.monto : 0;
-    
-    // Preparar fila a insertar
-    const nuevaFila = [
-      movimiento.idColaborador,
-      colaborador[1], // Nombre completo
-      movimiento.tipoRegistro,
-      entrada,
-      salida,
-      movimiento.detalle,
-      new Date()
-    ];
 
-    // Insertar la fila de forma manual para obtener el índice
-    const lastRow = sheet.getLastRow();
-    sheet.getRange(lastRow + 1, 1, 1, nuevaFila.length).setValues([nuevaFila]);
-
-    // Si la hoja tiene la columna URL_Vale, la ubicamos
     const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-    const idxUrl = headers.indexOf('URL_Vale');
+    const idxIdTransaccion = headers.indexOf('ID_Transaccion');
 
-    // Si es una salida, generar un vale de caja en Google Docs con dos copias
-    if (movimiento.tipoMovimiento === "salida") {
-      try {
-        const filaInsertada = lastRow + 1;
-        const resultVale = generarValeCaja(movimiento, colaborador); // devuelve { fileId, url }
-
-        if (resultVale && resultVale.url && idxUrl !== -1) {
-          // Escribir la URL en la nueva fila
-          sheet.getRange(filaInsertada, idxUrl + 1).setValue(resultVale.url);
-        }
-
-        // Ahora generar PDF, guardarlo en carpeta y compartir/enviar
-        try {
-          const carpeta = crearCarpetaValesSiNoExiste();
-          const pdfInfo = guardarPdfDesdeDoc(resultVale.fileId, carpeta);
-
-          // Buscar emails
-          const emailColaborador = obtenerEmailColaborador(movimiento.idColaborador); // columna I en Colaboradores
-          const emailAdmin = obtenerEmailAdmin();
-
-          // Compartir con colaborador y admin (si existen)
-          const emailsACompartir = [];
-          if (emailColaborador) emailsACompartir.push(emailColaborador);
-          if (emailAdmin) emailsACompartir.push(emailAdmin);
-          if (emailsACompartir.length > 0) {
-            compartirArchivoConEmails(resultVale.fileId, emailsACompartir);
-            if (pdfInfo && pdfInfo.fileId) {
-              compartirArchivoConEmails(pdfInfo.fileId, emailsACompartir);
-            }
-          }
-
-          // Enviar correos con PDF adjunto
-          const subject = `Vale de Caja - ${colaborador[1]} - $${Number(movimiento.monto).toFixed(2)}`;
-          const body = `Adjunto encontrará el vale de caja por $${Number(movimiento.monto).toFixed(2)}.\n\nDetalle: ${movimiento.detalle}`;
-          if (emailColaborador) enviarCorreoConAdjunto(emailColaborador, subject, body, pdfInfo.fileId);
-          if (emailAdmin) enviarCorreoConAdjunto(emailAdmin, subject, body, pdfInfo.fileId);
-
-          // Escribir info del PDF y estado en la fila
-          const idxPdf = headers.indexOf('PDF_FileId');
-          const idxUrlPdf = headers.indexOf('URL_PDF');
-          const idxStatus = headers.indexOf('Vale_Status');
-          if (idxPdf !== -1 && pdfInfo && pdfInfo.fileId) {
-            sheet.getRange(filaInsertada, idxPdf + 1).setValue(pdfInfo.fileId);
-          }
-          if (idxUrlPdf !== -1 && pdfInfo && pdfInfo.url) {
-            sheet.getRange(filaInsertada, idxUrlPdf + 1).setValue(pdfInfo.url);
-          }
-          if (idxStatus !== -1) {
-            sheet.getRange(filaInsertada, idxStatus + 1).setValue('ENVIADO');
-          }
-        } catch (errFlow) {
-          console.error('Error en flujo de PDF/compartir/enviar:', errFlow);
-          if (idxUrl !== -1) sheet.getRange(filaInsertada, idxUrl + 1).setValue(resultVale.url || '');
-          // marcar estado de error
-          const idxStatusErr = headers.indexOf('Vale_Status');
-          if (idxStatusErr !== -1) sheet.getRange(filaInsertada, idxStatusErr + 1).setValue('ERROR');
-        }
-
-        return { success: true, message: 'Movimiento registrado correctamente.', valeUrl: resultVale && resultVale.url ? resultVale.url : null, pdfUrl: (typeof pdfInfo !== 'undefined' && pdfInfo && pdfInfo.url) ? pdfInfo.url : null };
-      } catch (errVale) {
-        console.error('Error al generar vale de caja:', errVale);
-        return { success: true, message: `Movimiento registrado correctamente. Pero no se pudo generar el vale: ${errVale.message}` };
-      }
+    if (idxIdTransaccion === -1) {
+      const newCol = sheet.getLastColumn() + 1;
+      sheet.getRange(1, newCol).setValue('ID_Transaccion').setBackground('#2E86AB').setFontColor('white').setFontWeight('bold');
     }
 
-    return { success: true, message: "Movimiento registrado correctamente." };
+    const nuevaFila = [
+      movimiento.idColaborador, colaborador[1], movimiento.tipoRegistro,
+      entrada, salida, movimiento.detalle, new Date()
+    ];
+
+    const filaInsertada = sheet.getLastRow() + 1;
+    sheet.getRange(filaInsertada, 1, 1, nuevaFila.length).setValues([nuevaFila]);
+
+    if (idxIdTransaccion !== -1) {
+         sheet.getRange(filaInsertada, idxIdTransaccion + 1).setValue(idRegistroUnico);
+    }
+
+    if (movimiento.tipoMovimiento === "salida") {
+      const resultVale = generarValeCaja(movimiento, colaborador, idRegistroUnico); // Pasa el ID único
+      const carpeta = crearCarpetaValesSiNoExiste();
+      const pdfInfo = guardarPdfDesdeDoc(resultVale.fileId, carpeta);
+
+      const idxUrl = headers.indexOf('URL_Vale');
+      if (idxUrl !== -1) sheet.getRange(filaInsertada, idxUrl + 1).setValue(resultVale.url);
+
+      const idxPdf = headers.indexOf('PDF_FileId');
+      if (idxPdf !== -1) sheet.getRange(filaInsertada, idxPdf + 1).setValue(pdfInfo.fileId);
+
+      const idxUrlPdf = headers.indexOf('URL_PDF');
+      if (idxUrlPdf !== -1) sheet.getRange(filaInsertada, idxUrlPdf + 1).setValue(pdfInfo.url);
+
+      return {
+        success: true,
+        message: 'Movimiento de salida registrado. Oprima los botones para gestionar el vale.',
+        idRegistro: idRegistroUnico,
+        pdfUrl: pdfInfo.url
+      };
+    }
+
+    return { success: true, message: "Movimiento de entrada registrado correctamente." };
   } catch (error) {
     console.error("Error en registrarMovimientoCaja:", error);
     return { success: false, message: `Error al registrar el movimiento: ${error.message}` };
   }
 }
+
 
 /**
  * Genera un documento tipo "Vale de Caja" con dos copias (Administrador y Colaborador)
@@ -1200,37 +1372,129 @@ function generarValeCaja(movimiento, colaborador) {
   return { fileId: fileId, url: url };
 }
 
-/**
- * Función temporal de prueba para generar un vale con datos mock.
- * Úsala desde el editor de Apps Script para forzar la pantalla de autorización
- * y verificar que la generación de documentos y PDFs funciona correctamente.
- */
-function pruebaGenerarValeMock() {
-  const movimientoMock = {
-    idColaborador: 'MOCK123',
-    tipoMovimiento: 'salida',
-    tipoRegistro: 'GASTO',
-    monto: 123.45,
-    detalle: 'Gasto de prueba generado por pruebaGenerarValeMock'
-  };
+// AGREGA esta nueva función en 'Código.js'
 
-  // Buscamos un colaborador real en la hoja; si no existe, usamos un nombre genérico
-  const ss = SpreadsheetApp.openById(getSpreadsheetId());
-  const sheetCol = ss.getSheetByName(HOJA_COLABORADORES);
-  const dataCol = sheetCol.getDataRange().getValues();
-  let colaborador = null;
-  if (dataCol.length > 1) {
-    // Tomar el primer colaborador real
-    colaborador = [dataCol[1][0], dataCol[1][1]];
-    movimientoMock.idColaborador = dataCol[1][0];
-  } else {
-    colaborador = [movimientoMock.idColaborador, 'Colaborador de Prueba'];
+function enviarValePorCorreo(idRegistro) {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_CONTABILIDAD);
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const idxIdTransaccion = headers.indexOf('ID_Transaccion');
+    const idxPdfId = headers.indexOf('PDF_FileId');
+    const idxColaboradorId = headers.indexOf('ID_Colaborador');
+    const idxNombre = headers.indexOf('NombreCompleto');
+    const idxMontoSalida = headers.indexOf('SALIDA_$');
+    const idxDetalle = headers.indexOf('Detalle_transaccion');
+    const idxStatus = headers.indexOf('Vale_Status');
+
+    if (idxIdTransaccion === -1 || idxPdfId === -1) {
+      return { success: false, message: "Error: Columnas necesarias no encontradas en la hoja." };
+    }
+
+    let registroEncontrado = null;
+    let rowIndex = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][idxIdTransaccion] == idRegistro) {
+        registroEncontrado = data[i];
+        rowIndex = i + 1;
+        break;
+      }
+    }
+
+    if (!registroEncontrado) {
+      return { success: false, message: "Error: No se encontró el registro del vale." };
+    }
+
+    const pdfFileId = registroEncontrado[idxPdfId];
+    const idColaborador = registroEncontrado[idxColaboradorId];
+    const nombreColaborador = registroEncontrado[idxNombre];
+    const monto = registroEncontrado[idxMontoSalida];
+    const detalle = registroEncontrado[idxDetalle];
+
+    const emailColaborador = obtenerEmailColaborador(idColaborador);
+    const emailAdmin = obtenerEmailAdmin();
+    const emailsACompartir = [emailColaborador, emailAdmin].filter(Boolean);
+
+    if (pdfFileId && emailsACompartir.length > 0) {
+      compartirArchivoConEmails(pdfFileId, emailsACompartir);
+
+      // --- CORRECCIÓN AQUÍ ---
+      const montoFormateado = formatearMonedaCLP(monto); // Usamos la nueva función del servidor
+      const subject = `Vale de Caja - ${nombreColaborador} - ${montoFormateado}`;
+      const body = `Se ha generado un vale de caja a nombre de ${nombreColaborador} por un monto de ${montoFormateado}.\n\nDetalle: ${detalle}\n\nEl PDF se encuentra adjunto.`;
+      // --- FIN DE LA CORRECCIÓN ---
+
+      if (emailColaborador) enviarCorreoConAdjunto(emailColaborador, subject, body, pdfFileId);
+      if (emailAdmin) enviarCorreoConAdjunto(emailAdmin, subject, body, pdfFileId);
+
+      if (idxStatus !== -1 && rowIndex !== -1) {
+        sheet.getRange(rowIndex, idxStatus + 1).setValue('ENVIADO');
+      }
+      return { success: true, message: `Correo enviado a: ${emailsACompartir.join(', ')}` };
+    }
+
+    return { success: false, message: "No se encontró ID de PDF o destinatarios para enviar el correo." };
+  } catch (e) {
+    console.error("Error en enviarValePorCorreo:", e);
+    return { success: false, message: e.message };
   }
+}
 
-  // Llamar a generarValeCaja directamente para forzar la creación del Doc
-  const resultado = generarValeCaja(movimientoMock, colaborador);
-  Logger.log('Resultado pruebaGenerarValeMock: %s', JSON.stringify(resultado));
-  return resultado;
+
+/**
+ * Obtiene los días trabajados por proyecto y colaborador desde la hoja 'Bonificaciones'.
+ * La cabecera de la hoja debe tener el formato 'Nombre (ID)'.
+ * @returns {object} Objeto con la estructura { [nombreProyecto]: { [idColaborador]: dias } }
+ */
+function obtenerDiasTrabajadosBonos() {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_BONIFICACIONES);
+    if (!sheet) {
+      // Si la hoja no existe, podría ser porque aún no se ha corrido el cálculo de bonificaciones.
+      // Devolver un objeto vacío es un caso manejable en el frontend.
+      return {}; 
+    }
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) {
+      return {}; // No hay datos
+    }
+
+    const headers = data[0];
+    const mapaColaboradores = {}; // Mapa de indice de columna a ID de colaborador
+
+    // Procesar cabeceras para extraer IDs de colaboradores
+    // Se asume formato "Nombre (ID)" a partir de la segunda columna
+    for (let i = 1; i < headers.length; i++) {
+      const header = headers[i];
+      const match = header.match(/\(([^)]+)\)$/); // Extraer contenido del paréntesis al final
+      if (match && match[1]) {
+        mapaColaboradores[i] = match[1].trim(); // { "1": "C001", "2": "C002", ... }
+      }
+    }
+
+    const diasTrabajados = {};
+    // Procesar filas de datos
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      const nombreProyecto = row[0];
+      if (!nombreProyecto) continue; // Omitir filas sin nombre de proyecto
+
+      diasTrabajados[nombreProyecto] = {};
+      for (let j = 1; j < row.length; j++) {
+        const colabId = mapaColaboradores[j];
+        if (colabId) {
+          diasTrabajados[nombreProyecto][colabId] = Number(row[j]) || 0;
+        }
+      }
+    }
+
+    return diasTrabajados;
+  } catch (e) {
+    console.error("Error en obtenerDiasTrabajadosBonos:", e);
+    return { error: e.message };
+  }
 }
 
 /**
@@ -1407,6 +1671,25 @@ function crearCarpetaValesSiNoExiste() {
 }
 
 /**
+ * Crea (si no existe) una carpeta llamada 'Informes de Caja' en la raíz del Drive.
+ * @returns {Folder} carpeta creada o existente
+ */
+function crearCarpetaInformesSiNoExiste() {
+  try {
+    const nombre = 'Informes de Caja';
+    const folders = DriveApp.getFoldersByName(nombre);
+    if (folders.hasNext()) {
+      return folders.next();
+    }
+    const folder = DriveApp.createFolder(nombre);
+    return folder;
+  } catch (e) {
+    console.error('Error en crearCarpetaInformesSiNoExiste:', e);
+    throw e;
+  }
+}
+
+/**
  * Genera un PDF a partir de un Google Doc y lo guarda en la carpeta indicada.
  * @param {string} docId
  * @param {Folder} carpeta
@@ -1473,69 +1756,71 @@ function enviarCorreoConAdjunto(emailTo, subject, body, filePdfId) {
 // =============================================================================
 
 /**
- * Obtiene la matriz completa de datos para la página de ponderación.
- * Combina colaboradores activos y proyectos de asistencia con los datos guardados en la hoja 'ponderacion'.
- * @returns {object} Un objeto con { colaboradores: [{id, nombre}, ...], proyectos: [{nombre, ponderaciones: {colabId: valor}}, ...] }.
+ * Obtiene la matriz de datos para la página de ponderación.
+ * AJUSTE: Ahora carga los proyectos desde 'Bonificaciones', pero los valores de
+ * ponderación vienen de la tabla estándar, con posibilidad de ser sobreescritos.
+ * @returns {object} Objeto con { colaboradores, proyectos }.
  */
 function obtenerDatosPonderacion() {
   try {
     const ss = SpreadsheetApp.openById(getSpreadsheetId());
     const sheetColaboradores = ss.getSheetByName(HOJA_COLABORADORES);
-    const sheetAsistencia = ss.getSheetByName(HOJA_ASISTENCIA);
+    const sheetBonificaciones = ss.getSheetByName(HOJA_BONIFICACIONES);
     const sheetPonderacion = ss.getSheetByName(HOJA_PONDERACION);
 
-    // 1. Obtener todos los colaboradores activos (ID y Nombre)
+    // 1. Obtener colaboradores activos
     const colaboradoresData = sheetColaboradores.getDataRange().getValues().slice(1);
     const colaboradoresActivos = colaboradoresData
       .filter(row => row[6] === 'Activo')
       .map(row => ({ id: row[0].toString().trim(), nombre: row[1].toString().trim() }))
-      .sort((a, b) => a.nombre.localeCompare(b.nombre)); // Ordenar alfabéticamente
+      .sort((a, b) => a.nombre.localeCompare(b.nombre));
 
-    const mapaColaboradoresIdNombre = new Map(colaboradoresActivos.map(c => [c.id, c.nombre]));
+    // 2. Obtener ponderaciones estándar (nuestra fuente principal de valores)
+    const ponderacionesEstandarData = obtenerPonderacionEstandar(); // Usa la función que ya creamos
+    const mapaPonderacionEstandar = new Map(ponderacionesEstandarData.map(p => [p.id.toString().trim(), p.ponderacion]));
 
-    // 2. Obtener todos los proyectos únicos desde RegistrosAsistencia
-    const asignaciones = sheetAsistencia.getRange("E2:E").getValues().flat().filter(String);
-    const proyectosSet = new Set();
-    asignaciones.forEach(asignacion => {
-      let proyectoNombre = '';
-      const up = asignacion.toUpperCase();
-      if (up.startsWith('PROYECTO')) {
-        const idx = asignacion.indexOf(':');
-        if (idx !== -1) {
-          proyectoNombre = asignacion.substring(idx + 1).trim();
-        } else {
-          proyectoNombre = asignacion.replace(/PROYECTO\s*-?\s*/i, '').trim();
-        }
-        if (proyectoNombre) {
-          proyectosSet.add(proyectoNombre);
-        }
-      }
-    });
-    const todosLosProyectos = Array.from(proyectosSet).sort();
-
-    // 3. Leer los datos de ponderación existentes
-    const ponderacionesGuardadas = {}; // { proyecto: { nombreColaborador: valor } }
-    if (sheetPonderacion) {
-      const ponderacionData = sheetPonderacion.getDataRange().getValues();
-      if (ponderacionData.length > 1) {
-        const headers = ponderacionData[0].slice(1); // Nombres de colaboradores
-        ponderacionData.slice(1).forEach(row => {
-          const proyecto = row[0];
-          ponderacionesGuardadas[proyecto] = {};
-          headers.forEach((nombreCol, index) => {
-            ponderacionesGuardadas[proyecto][nombreCol] = row[index + 1];
-          });
-        });
-      }
+    // 3. Obtener la lista de proyectos desde la hoja BONIFICACIONES
+    if (!sheetBonificaciones) throw new Error("La hoja 'Bonificaciones' no existe. Por favor, calcule primero las bonificaciones.");
+    const bonificacionesData = sheetBonificaciones.getDataRange().getValues();
+    if (bonificacionesData.length <= 1) {
+        // Si no hay datos, retornamos una estructura vacía para evitar errores en el frontend.
+        return { colaboradores: colaboradoresActivos, proyectos: [] };
     }
-    
-    // 4. Construir la matriz final
-    const mapaColaboradoresNombreId = new Map(colaboradoresActivos.map(c => [c.nombre, c.id]));
-    const proyectosResult = todosLosProyectos.map(nombreProyecto => {
+    const proyectosEnBonificaciones = bonificacionesData.slice(1).map(row => row[0]).filter(String);
+
+    // 4. Leer ponderaciones específicas (las que el admin guardó para un proyecto)
+    const ponderacionesGuardadas = {};
+    if (sheetPonderacion && sheetPonderacion.getLastRow() > 1) {
+      const data = sheetPonderacion.getDataRange().getValues();
+      const headers = data[0];
+      const mapaNombreColumna = new Map(headers.map((h, i) => [h, i]));
+      
+      data.slice(1).forEach(row => {
+        const proyecto = row[0];
+        if (proyecto) {
+          ponderacionesGuardadas[proyecto] = {};
+          colaboradoresActivos.forEach(colab => {
+            const colIndex = mapaNombreColumna.get(colab.nombre);
+            if (colIndex !== undefined && row[colIndex] !== '') {
+              ponderacionesGuardadas[proyecto][colab.id] = row[colIndex];
+            }
+          });
+        }
+      });
+    }
+
+    // 5. Construir la matriz final combinando los datos
+    const proyectosResult = proyectosEnBonificaciones.map(nombreProyecto => {
       const ponderaciones = {};
       colaboradoresActivos.forEach(colab => {
-        const valorGuardado = (ponderacionesGuardadas[nombreProyecto] && ponderacionesGuardadas[nombreProyecto][colab.nombre]) ? ponderacionesGuardadas[nombreProyecto][colab.nombre] : 0;
-        ponderaciones[colab.id] = valorGuardado;
+        const valorGuardado = (ponderacionesGuardadas[nombreProyecto] && ponderacionesGuardadas[nombreProyecto][colab.id] !== undefined)
+          ? ponderacionesGuardadas[nombreProyecto][colab.id]
+          : null; // Si hay un valor específico guardado (incluso 0), lo usamos.
+
+        const valorEstandar = mapaPonderacionEstandar.get(colab.id) || 0;
+        
+        // Prioridad: 1. Valor guardado específico. 2. Valor estándar.
+        ponderaciones[colab.id] = (valorGuardado !== null) ? valorGuardado : valorEstandar;
       });
       return {
         nombre: nombreProyecto,
@@ -1552,6 +1837,19 @@ function obtenerDatosPonderacion() {
     console.error("Error en obtenerDatosPonderacion:", e);
     return { error: e.message };
   }
+}
+
+/**
+ * Formatea un número como moneda CLP (Peso Chileno) en el lado del servidor.
+ * @param {number} valor El número a formatear.
+ * @returns {string} El valor formateado como "$1.234".
+ */
+function formatearMonedaCLP(valor) {
+  if (typeof valor !== 'number') {
+    return '$0';
+  }
+  // Añade el signo $ y los separadores de miles (puntos).
+  return '$' + valor.toFixed(0).replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1.');
 }
 
 
@@ -1627,5 +1925,524 @@ function guardarPonderacionFila(dataFila) {
   } catch (e) {
     console.error("Error en guardarPonderacionFila:", e);
     return { success: false, message: `Error al guardar: ${e.message}` };
+  }
+}
+
+/**
+ * Guarda los resultados del cálculo de bonos en una nueva hoja llamada 'Bonos a Pagar'.
+ * @param {Array<Array<string>>} dataTabla - Un array 2D con los datos de la tabla de resultados.
+ * @returns {object} Un objeto con { success: true/false, message: '...' }.
+ */
+function guardarBonosAPagar(dataTabla) {
+  try {
+    if (!dataTabla || dataTabla.length === 0) {
+      throw new Error("No se recibieron datos para guardar.");
+    }
+
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const nombreHoja = "Bonos a Pagar";
+    let sheet = ss.getSheetByName(nombreHoja);
+
+    if (sheet) {
+      sheet.clear();
+    } else {
+      sheet = ss.insertSheet(nombreHoja);
+    }
+
+    const numRows = dataTabla.length;
+    const numCols = dataTabla[0].length;
+
+    // Escribir todos los datos de una vez
+    sheet.getRange(1, 1, numRows, numCols).setValues(dataTabla);
+
+    // --- Aplicar Formato ---
+    sheet.getRange(1, 1, 1, numCols).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+    sheet.getRange(numRows, 1, 1, numCols).setBackground("#f0f0f0").setFontWeight("bold");
+    sheet.getRange(1, numCols, numRows, 1).setFontWeight("bold");
+
+    // --- CORRECCIÓN CLAVE EN EL FORMATO DE NÚMERO ---
+    // ANTES: .setNumberFormat('$#,##0.00');
+    // AHORA: Formato de moneda sin decimales
+    sheet.getRange(2, 2, numRows - 1, numCols - 1).setNumberFormat('$#,##0');
+    
+    sheet.autoResizeColumns(1, numCols);
+
+    return { success: true, message: `Resultados guardados correctamente en la hoja '${nombreHoja}'.` };
+  } catch (e) {
+    console.error("Error en guardarBonosAPagar:", e);
+    return { success: false, message: `Error al guardar en la hoja de cálculo: ${e.message}` };
+  }
+}
+
+function obtenerBalanceFiltrado(filtros) {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_CONTABILIDAD);
+    const data = sheet.getDataRange().getValues().slice(1);
+
+    const fechaDesde = new Date(filtros.fechaDesde.replace(/-/g, '\/') + ' 00:00:00');
+    const fechaHasta = new Date(filtros.fechaHasta.replace(/-/g, '\/') + ' 23:59:59');
+
+    let saldoAcumulado = 0;
+    let totalEntradas = 0;
+    let totalSalidas = 0;
+
+    const resultados = data.map(row => {
+        const fechaMovimiento = new Date(row[6]);
+        const tipoRegistro = row[2];
+        const entrada = parseFloat(row[3]) || 0;
+        const salida = parseFloat(row[4]) || 0;
+
+        // Lógica de filtrado
+        const enRango = fechaMovimiento >= fechaDesde && fechaMovimiento <= fechaHasta;
+        const coincideTipo = (filtros.tipoMovimiento === 'TODOS' || tipoRegistro === filtros.tipoMovimiento);
+
+        if (enRango && coincideTipo) {
+            saldoAcumulado += entrada - salida;
+            totalEntradas += entrada;
+            totalSalidas += salida;
+            return {
+                fecha: Utilities.formatDate(fechaMovimiento, Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm'),
+                nombre: row[1],
+                entrada: entrada,
+                salida: salida,
+                saldo: saldoAcumulado,
+                detalle: row[5] || ''
+            };
+        }
+        return null;
+    }).filter(Boolean); // Elimina los nulos que no pasaron el filtro
+
+    return {
+      data: resultados,
+      summary: {
+        totalEntradas: totalEntradas,
+        totalSalidas: totalSalidas,
+        diferencia: totalEntradas - totalSalidas
+      }
+    };
+
+  } catch (e) {
+    console.error("Error en obtenerBalanceFiltrado:", e);
+    return { error: e.message };
+  }
+}
+
+function exportarBalanceComoNuevaHoja(datosBalance) {
+  try {
+    // 1. Generar nombre de archivo con fecha y hora
+    const ahora = new Date();
+    const fechaFormateada = Utilities.formatDate(ahora, Session.getScriptTimeZone(), "yyyy-MM-dd_HH-mm");
+    const nombreArchivo = `Informe de Balance - ${fechaFormateada}`;
+
+    // 2. Crear la nueva hoja de cálculo
+    const newSs = SpreadsheetApp.create(nombreArchivo);
+    const newFile = DriveApp.getFileById(newSs.getId());
+
+    // 3. Obtener/Crear la carpeta de destino
+    const carpetaDestino = crearCarpetaInformesSiNoExiste();
+
+    // 4. Mover el archivo a la carpeta
+    newFile.moveTo(carpetaDestino);
+
+    // 5. Llenar la hoja con los datos
+    guardarBalanceEnHoja({ ...datosBalance, spreadsheet: newSs });
+
+    // 6. Devolver la URL del archivo ya movido
+    return { success: true, url: newSs.getUrl() };
+
+  } catch (e) {
+    console.error("Error en exportarBalanceComoNuevaHoja:", e);
+    return { success: false, message: `Error al exportar: ${e.message}` };
+  }
+}
+
+function guardarBalanceEnHoja(payload) {
+    const datosBalance = payload;
+    const ss = payload.spreadsheet || SpreadsheetApp.openById(getSpreadsheetId());
+
+    try {
+        const nombreHoja = payload.spreadsheet ? "Balance" : "Balance Filtrado";
+        let sheet = ss.getSheetByName(nombreHoja);
+        if (sheet && !payload.spreadsheet) {
+          sheet.clear();
+        } else if (!sheet) {
+          sheet = ss.insertSheet(nombreHoja);
+        }
+
+        // 1. Añade "Detalle" al final de los encabezados
+        const headers = ["Fecha", "Colaborador", "Entrada", "Salida", "Saldo Acumulado", "Detalle"];
+        sheet.getRange(1, 1, 1, headers.length).setValues([headers])
+          .setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+
+        if (datosBalance && datosBalance.data && datosBalance.data.length > 0) {
+          // 2. Añade r.detalle al mapeo de las filas
+          const rows = datosBalance.data.map(r => [r.fecha, r.nombre, r.entrada, r.salida, r.saldo, r.detalle]);
+          sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+
+          // La lógica del pie de página no cambia
+          const summaryRow = sheet.getLastRow() + 2;
+          sheet.getRange(summaryRow, 2).setValue("TOTALES").setFontWeight("bold");
+          sheet.getRange(summaryRow, 3).setValue(datosBalance.summary.totalEntradas);
+          sheet.getRange(summaryRow, 4).setValue(datosBalance.summary.totalSalidas);
+
+          sheet.getRange(summaryRow + 1, 2).setValue("DIFERENCIA").setFontWeight("bold");
+          sheet.getRange(summaryRow + 1, 5).setValue(datosBalance.summary.diferencia);
+
+          sheet.getRange(2, 3, sheet.getLastRow(), 3).setNumberFormat("$#,##0");
+        }
+
+        sheet.autoResizeColumns(1, headers.length);
+        return { success: true, message: `Datos guardados en la hoja '${nombreHoja}'.` };
+    } catch(e) {
+        return { success: false, message: `Error al guardar: ${e.message}` };
+    }
+}
+
+// ===============================================================
+// GESTIÓN DE OTROS HABERES
+// ===============================================================
+
+/**
+ * Obtiene las listas necesarias para el formulario de Otros Haberes.
+ * @returns {object} Objeto con la lista de colaboradores y tipos de haber.
+ */
+function obtenerListasParaOtrosHaberes() {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheetColaboradores = ss.getSheetByName(HOJA_COLABORADORES);
+    const sheetConfig = ss.getSheetByName(HOJA_CONFIG);
+
+    const colaboradoresData = sheetColaboradores.getDataRange().getValues();
+    const colaboradoresActivos = colaboradoresData.slice(1).filter(row => row[6] === 'Activo').map(row => ({
+      id: row[0],
+      nombre: row[1]
+    }));
+
+    const tiposHaber = sheetConfig.getRange("R2:R").getValues().flat().filter(String);
+
+    return {
+      colaboradores: colaboradoresActivos,
+      tiposHaber: tiposHaber
+    };
+  } catch (e) {
+    console.error("Error en obtenerListasParaOtrosHaberes:", e);
+    return { colaboradores: [], tiposHaber: [] };
+  }
+}
+
+/**
+ * Registra un nuevo haber en la hoja de cálculo.
+ * @param {object} haber - Objeto con los datos del registro.
+ * @returns {string} Mensaje de éxito o error.
+ */
+function registrarOtroHaber(haber) {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_OTROS_HABERES);
+    const colaboradores = ss.getSheetByName(HOJA_COLABORADORES).getDataRange().getValues();
+    
+    const nombreColaborador = colaboradores.find(c => c[0].toString() === haber.idColaborador.toString())[1];
+    
+    // Generar un ID único basado en el timestamp
+    const idHaber = new Date().getTime();
+
+    sheet.appendRow([
+      idHaber,
+      haber.idColaborador,
+      nombreColaborador,
+      new Date(haber.fecha),
+      haber.tipoHaber,
+      parseFloat(haber.monto),
+      haber.comentario || "",
+      new Date()
+    ]);
+    
+    return "Registro guardado correctamente.";
+  } catch (e) {
+    console.error("Error en registrarOtroHaber:", e);
+    return `Error al guardar: ${e.message}`;
+  }
+}
+
+/**
+ * Obtiene los registros de Otros Haberes, aplicando filtros.
+ * @param {object} filtros - Objeto con fechaDesde, fechaHasta y busqueda.
+ * @returns {Array<object>} Lista de registros encontrados.
+ */
+function obtenerOtrosHaberes(filtros) {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_OTROS_HABERES);
+    const data = sheet.getDataRange().getValues().slice(1);
+
+    const fechaDesde = new Date(filtros.fechaDesde.replace(/-/g, '\/') + ' 00:00:00');
+    const fechaHasta = new Date(filtros.fechaHasta.replace(/-/g, '\/') + ' 23:59:59');
+    const busqueda = (filtros.busqueda || '').toLowerCase();
+
+    const resultados = data.filter(row => {
+      const fechaRegistro = new Date(row[3]);
+      const enRango = fechaRegistro >= fechaDesde && fechaRegistro <= fechaHasta;
+      if (!enRango) return false;
+
+      if (busqueda) {
+        // Combina los campos relevantes en un solo string para buscar
+        const textoFila = (row[2] + row[4] + row[5] + row[6]).toLowerCase();
+        return textoFila.includes(busqueda);
+      }
+      return true;
+    }).map(row => ({
+      idHaber: row[0],
+      nombreColaborador: row[2],
+      fecha: Utilities.formatDate(new Date(row[3]), Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+      tipoHaber: row[4],
+      monto: row[5],
+      comentario: row[6]
+    }));
+    
+    // Ordenar por fecha, del más reciente al más antiguo
+    return resultados.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+  } catch (e) {
+    console.error("Error en obtenerOtrosHaberes:", e);
+    return { error: e.message };
+  }
+}
+
+/**
+ * Elimina un registro de la hoja OtrosHaberes.
+ * @param {string} idHaber - El ID del registro a eliminar.
+ * @returns {string} Mensaje de éxito o error.
+ */
+function eliminarOtroHaber(idHaber) {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    const sheet = ss.getSheetByName(HOJA_OTROS_HABERES);
+    const data = sheet.getRange("A:A").getValues();
+
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0].toString() == idHaber.toString()) {
+        sheet.deleteRow(i + 1);
+        return "Registro eliminado correctamente.";
+      }
+    }
+    return "Error: No se encontró el registro para eliminar.";
+  } catch (e) {
+    console.error("Error en eliminarOtroHaber:", e);
+    return `Error al eliminar: ${e.message}`;
+  }
+}
+
+// ===============================================================
+// INFORME MAESTRO DE NÓMINA
+// ==============================================================
+
+/**
+ * Convierte un texto con formato de moneda a un número.
+ * Ejemplo: "$1.234,56" -> 1234.56
+ * @param {string|number} valor El valor a convertir.
+ * @returns {number} El valor como número.
+ */
+function parsearMoneda(valor) {
+  if (typeof valor === 'number') {
+    return valor;
+  }
+  if (typeof valor !== 'string' || !valor) {
+    return 0;
+  }
+  // Elimina el símbolo de moneda, los puntos de miles y reemplaza la coma decimal por un punto.
+  const valorLimpio = valor.replace(/\$/g, '').replace(/\./g, '').replace(/,/g, '.');
+  return parseFloat(valorLimpio) || 0;
+}
+
+/**
+ * Realiza el cálculo completo del informe maestro de nómina para un mes y año dados.
+ * @param {number} mes - El mes (1-12).
+ * @param {number} anio - El año.
+ * @returns {object} Un objeto con los datos procesados y la lista de haberes dinámicos.
+ */
+function calcularNominaMaestra(mes, anio) {
+  const ss = SpreadsheetApp.openById(getSpreadsheetId());
+  const mesJs = mes - 1; // Mes para cálculos en JavaScript (0-11)
+  const inicioPeriodo = new Date(anio, mesJs, 1);
+  const finPeriodo = new Date(anio, mesJs + 1, 0, 23, 59, 59);
+
+  // --- 1. OBTENER DATOS DE TODAS LAS HOJAS ---
+  const colaboradores = ss.getSheetByName(HOJA_COLABORADORES).getDataRange().getValues().slice(1).filter(c => c[6] === 'Activo');
+  const asistencias = ss.getSheetByName(HOJA_ASISTENCIA).getDataRange().getValues().slice(1);
+  const contabilidad = ss.getSheetByName(HOJA_CONTABILIDAD).getDataRange().getValues().slice(1);
+  const otrosHaberesData = ss.getSheetByName(HOJA_OTROS_HABERES).getDataRange().getValues().slice(1);
+  
+  const sheetBonos = ss.getSheetByName("Bonos a Pagar");
+  const bonosData = sheetBonos ? sheetBonos.getDataRange().getValues() : [];
+
+  // --- 2. PROCESAR DATOS POR CADA COLABORADOR ---
+  const resultados = [];
+  const haberesDinamicos = new Set(); 
+
+  colaboradores.forEach(col => {
+    const idColaborador = col[0];
+    const nombreColaborador = col[1];
+    const sueldoBase = col[5] || 0;
+
+    // --- Sección 2: Sueldo Base ---
+    const asistenciasCol = asistencias.filter(a => {
+      const fechaAsistencia = new Date(a[2]);
+      return a[1] == idColaborador && fechaAsistencia >= inicioPeriodo && fechaAsistencia <= finPeriodo;
+    });
+    const estadosPermiso = ["Trabajado", "No citado"];
+    const permisos = asistenciasCol.filter(a => !estadosPermiso.includes(a[3])).length;
+    const diasTrabajados = 30 - permisos;
+    const sueldoLiq = (sueldoBase / 30) * diasTrabajados;
+
+    // --- Sección 3: Descuentos ---
+    const movimientosContables = contabilidad
+      .filter(m => m[0] == idColaborador && new Date(m[6]) >= inicioPeriodo && new Date(m[6]) <= finPeriodo);
+
+    const totalAnticipos = movimientosContables
+      .filter(m => (m[2] || '').toUpperCase().includes('ANTICIPO'))
+      .reduce((acc, m) => acc + (m[4] || 0), 0);
+
+    const otrosDescuentos = movimientosContables
+      .filter(m => !(m[2] || '').toUpperCase().includes('ANTICIPO'))
+      .reduce((acc, m) => acc + (m[4] || 0) - (m[3] || 0), 0);
+    
+    const anticipo1 = totalAnticipos;
+    const anticipo2 = 0;
+    const totalDescuentos = anticipo1 + anticipo2 + otrosDescuentos;
+    const sueldoLiq2 = sueldoLiq - totalDescuentos;
+    
+    // --- Sección 4: Bonificaciones (LÓGICA CORREGIDA PARA BUSCAR POR NOMBRE) ---
+    let bonoTrabajos = 0;
+    if (bonosData.length > 1) {
+      const headerBonos = bonosData[0]; 
+      const totalRowIndex = bonosData.findIndex(row => row[0] === 'Total Colaborador');
+
+      if (totalRowIndex !== -1) {
+        const totalRow = bonosData[totalRowIndex]; 
+        
+        // *** INICIO DE LA CORRECCIÓN CLAVE ***
+        // Normalizamos el nombre del colaborador (quitamos espacios, a mayúsculas)
+        const nombreNormalizado = nombreColaborador.replace(/\s/g, '').toUpperCase();
+        
+        // Buscamos en la cabecera un nombre que, al normalizarlo, coincida
+        const colIndex = headerBonos.findIndex(h => {
+          if (!h || typeof h !== 'string') return false;
+          const headerNormalizado = h.replace(/\s/g, '').toUpperCase();
+          return headerNormalizado === nombreNormalizado;
+        });
+        // *** FIN DE LA CORRECCIÓN CLAVE ***
+
+        if (colIndex !== -1) {
+          const valor = parsearMoneda(totalRow[colIndex]);
+          if (!isNaN(valor)) {
+            bonoTrabajos = valor;
+          }
+        }
+      }
+    }
+    
+    const otrosHaberesCol = otrosHaberesData.filter(h => h[1] == idColaborador && new Date(h[3]) >= inicioPeriodo && new Date(h[3]) <= finPeriodo);
+    const haberesAgrupados = {};
+    otrosHaberesCol.forEach(h => {
+      const tipoHaber = h[4];
+      const monto = parseFloat(h[5]) || 0;
+      haberesDinamicos.add(tipoHaber);
+      haberesAgrupados[tipoHaber] = (haberesAgrupados[tipoHaber] || 0) + monto;
+    });
+
+    let totalBonos = bonoTrabajos;
+    Object.values(haberesAgrupados).forEach(monto => totalBonos += monto);
+    
+    // --- Sección 5: Totales Finales ---
+    const totalLiquidoPago = sueldoLiq2 + totalBonos;
+    const totalMes = totalLiquidoPago + totalDescuentos;
+
+    resultados.push({
+      id: idColaborador,
+      nombre: nombreColaborador,
+      sueldoBase: sueldoBase,
+      permisos: permisos,
+      diasTrabajados: diasTrabajados,
+      sueldoLiq: sueldoLiq,
+      anticipo1: anticipo1,
+      anticipo2: anticipo2,
+      descVarios: otrosDescuentos,
+      totalDescuentos: totalDescuentos,
+      sueldoLiq2: sueldoLiq2,
+      bonoTrabajos: bonoTrabajos,
+      otrosHaberes: haberesAgrupados,
+      totalBonos: totalBonos,
+      totalLiquidoPago: totalLiquidoPago,
+      totalMes: totalMes
+    });
+  });
+
+  return { data: resultados, haberesHeaders: Array.from(haberesDinamicos).sort() };
+}
+
+/**
+ * Exporta el informe maestro a una nueva hoja de cálculo de Google Sheets con valores.
+ * @param {number} mes - El mes (1-12).
+ * @param {number} anio - El año.
+ * @returns {object} Objeto con la URL del archivo creado o un mensaje de error.
+ */
+function exportarNominaMaestra(mes, anio) {
+  try {
+    const { data, haberesHeaders } = calcularNominaMaestra(mes, anio);
+    if (!data || data.length === 0) {
+      return { success: false, message: "No hay datos para exportar." };
+    }
+
+    const nombreArchivo = `Informe Nomina (Valores) - ${mes}-${anio}`;
+    const newSs = SpreadsheetApp.create(nombreArchivo);
+    const sheet = newSs.getActiveSheet();
+    
+    // --- CONSTRUIR CABECERA HORIZONTAL COMPLETA ---
+    const header = [
+      // Info básica y Sueldo
+      "#", "Colaborador", "ID", "Sueldo Base", "Permisos (días)", "Días a Pagar", "Sueldo Líquido Inicial",
+      // Descuentos
+      "Anticipo 1", "Anticipo 2", "Desc. Rend/Varios", "Total Descuentos", "Sueldo Líquido (c/desc)",
+      // Bonos
+      "Bono Trabajos", ...haberesHeaders, "Total Bonos",
+      // Finales
+      "Total Líquido a Pago", "Costo Total Mes Empresa"
+    ];
+    sheet.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight("bold").setBackground("#4a86e8").setFontColor("white");
+
+    // --- CONSTRUIR FILAS SOLO CON VALORES ---
+    const dataRows = data.map((col, index) => {
+      const haberesValues = haberesHeaders.map(h => col.otrosHaberes[h] || 0);
+      
+      // Crear una única fila con todos los datos
+      return [
+        index + 1, col.nombre, col.id,
+        col.sueldoBase, col.permisos, col.diasTrabajados, col.sueldoLiq,
+        col.anticipo1, col.anticipo2, col.descVarios, col.totalDescuentos, col.sueldoLiq2,
+        col.bonoTrabajos, ...haberesValues, col.totalBonos,
+        col.totalLiquidoPago, col.totalMes
+      ];
+    });
+
+    // --- ESCRIBIR DATOS EN LA HOJA ---
+    if (dataRows.length > 0) {
+        sheet.getRange(2, 1, dataRows.length, dataRows[0].length).setValues(dataRows);
+    }
+    
+    // Formatear columnas de moneda con dos decimales
+    // Columnas: D, G a L, M hasta el final
+    sheet.getRange("D2:D" + (dataRows.length + 1)).setNumberFormat("$#,##0.00");
+    sheet.getRange("G2:L" + (dataRows.length + 1)).setNumberFormat("$#,##0.00");
+    const primeraColumnaBonos = String.fromCharCode("A".charCodeAt(0) + 12); // Columna M
+    const ultimaColumna = String.fromCharCode("A".charCodeAt(0) + header.length - 1);
+    sheet.getRange(`${primeraColumnaBonos}2:${ultimaColumna}` + (dataRows.length + 1)).setNumberFormat("$#,##0.00");
+
+
+    sheet.autoResizeColumns(1, header.length);
+
+    return { success: true, url: newSs.getUrl() };
+  } catch(e) {
+    console.error("Error al exportar nómina:", e);
+    return { success: false, message: `Error en el servidor: ${e.message}. Detalles: ${e.stack}` };
   }
 }

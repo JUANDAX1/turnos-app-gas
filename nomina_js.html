@@ -1,0 +1,152 @@
+document.addEventListener("DOMContentLoaded", function() {
+  // Configurar mes y año por defecto
+  const today = new Date();
+  const selectMes = document.getElementById('nomina-mes');
+  const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+  meses.forEach((mes, index) => {
+    selectMes.options.add(new Option(mes, index + 1));
+  });
+  selectMes.value = today.getMonth() + 1;
+  document.getElementById('nomina-anio').value = today.getFullYear();
+});
+
+function showMessage(containerId, message, type) {
+  const container = document.getElementById(containerId);
+  if (container) {
+    container.innerHTML = `<div class="message ${type}">${message}</div>`;
+    if (type !== 'error') {
+      setTimeout(() => { container.innerHTML = ''; }, 5000);
+    }
+  }
+}
+
+function formatearMoneda(valor) {
+  if (typeof valor !== 'number') return '$0';
+  return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', minimumFractionDigits: 0 }).format(valor);
+}
+
+function ejecutarCalculoNomina() {
+  const mes = document.getElementById('nomina-mes').value;
+  const anio = document.getElementById('nomina-anio').value;
+  const loading = document.getElementById('loadingNomina');
+  const container = document.getElementById('resultadosNomina');
+
+  loading.style.display = 'block';
+  container.innerHTML = '';
+  showMessage('msgNomina', '', 'info');
+
+  google.script.run
+    .withSuccessHandler(response => {
+      loading.style.display = 'none';
+      renderizarInforme(response);
+    })
+    .withFailureHandler(error => {
+      loading.style.display = 'none';
+      showMessage('msgNomina', `Error en el servidor: ${error.message}`, 'error');
+    })
+    .calcularNominaMaestra(mes, anio);
+}
+
+function renderizarInforme(response) {
+  const container = document.getElementById('resultadosNomina');
+  const { data, haberesHeaders } = response;
+
+  if (!data || data.length === 0) {
+    container.innerHTML = '<div class="message">No se encontraron datos para el período seleccionado.</div>';
+    return;
+  }
+
+  let html = '';
+
+  // --- Sección 1 y 2: Sueldo Base ---
+  html += `
+    <div class="card">
+      <div class="card-header">Sueldo Base y Liquidación Inicial</div>
+      <div class="card-body table-container">
+        <table>
+          <thead><tr><th>#</th><th>Colaborador</th><th>ID</th><th>Sueldo Base</th><th>Permisos (días)</th><th>Días a Pagar</th><th>Sueldo Líquido Inicial</th></tr></thead>
+          <tbody>`;
+  data.forEach((col, i) => {
+    html += `<tr>
+              <td>${i + 1}</td><td>${col.nombre}</td><td>${col.id}</td>
+              <td>${formatearMoneda(col.sueldoBase)}</td><td>${col.permisos}</td>
+              <td>${col.diasTrabajados}</td><td><strong>${formatearMoneda(col.sueldoLiq)}</strong></td>
+             </tr>`;
+  });
+  html += `</tbody></table></div></div>`;
+  
+  // --- Sección 3: Descuentos ---
+  html += `
+    <div class="card">
+      <div class="card-header">Descuentos del Período</div>
+      <div class="card-body table-container">
+        <table>
+          <thead><tr><th>#</th><th>Colaborador</th><th>Anticipo 1</th><th>Anticipo 2</th><th>Desc. Rend/Varios</th><th>Total Descuentos</th><th>Sueldo Líquido (c/desc)</th></tr></thead>
+          <tbody>`;
+  data.forEach((col, i) => {
+    html += `<tr>
+              <td>${i + 1}</td><td>${col.nombre}</td>
+              <td>${formatearMoneda(col.anticipo1)}</td><td>${formatearMoneda(col.anticipo2)}</td>
+              <td>${formatearMoneda(col.descVarios)}</td><td><strong>${formatearMoneda(col.totalDescuentos)}</strong></td>
+              <td><strong>${formatearMoneda(col.sueldoLiq2)}</strong></td>
+             </tr>`;
+  });
+  html += `</tbody></table></div></div>`;
+  
+  // --- Sección 4: Bonificaciones ---
+  html += `
+    <div class="card">
+      <div class="card-header">Bonificaciones y Otros Haberes</div>
+      <div class="card-body table-container">
+        <table>
+          <thead><tr><th>#</th><th>Colaborador</th><th>Bono Trabajos</th>`;
+  haberesHeaders.forEach(h => html += `<th>${h}</th>`);
+  html += `<th>Total Bonos</th></tr></thead>
+          <tbody>`;
+  data.forEach((col, i) => {
+    html += `<tr>
+              <td>${i + 1}</td><td>${col.nombre}</td>
+              <td>${formatearMoneda(col.bonoTrabajos)}</td>`;
+    haberesHeaders.forEach(h => html += `<td>${formatearMoneda(col.otrosHaberes[h] || 0)}</td>`);
+    html += `<td><strong>${formatearMoneda(col.totalBonos)}</strong></td>
+             </tr>`;
+  });
+  html += `</tbody></table></div></div>`;
+  
+  // --- Sección 5: Totales Finales ---
+  html += `
+    <div class="card">
+      <div class="card-header">Liquidación Final</div>
+      <div class="card-body table-container">
+        <table>
+          <thead><tr><th>#</th><th>Colaborador</th><th>Total Líquido a Pago</th><th>Costo Total Mes Empresa</th></tr></thead>
+          <tbody>`;
+  data.forEach((col, i) => {
+    html += `<tr>
+              <td>${i + 1}</td><td>${col.nombre}</td>
+              <td><strong style="font-size: 1.1rem; color: green;">${formatearMoneda(col.totalLiquidoPago)}</strong></td>
+              <td><strong>${formatearMoneda(col.totalMes)}</strong></td>
+             </tr>`;
+  });
+  html += `</tbody></table></div></div>`;
+
+  container.innerHTML = html;
+}
+
+function exportarNomina() {
+  const mes = document.getElementById('nomina-mes').value;
+  const anio = document.getElementById('nomina-anio').value;
+  showMessage('msgNomina', 'Generando exportación en una nueva hoja de cálculo. Esto puede tardar unos segundos...', 'info');
+
+  google.script.run
+    .withSuccessHandler(response => {
+      if (response.success) {
+        showMessage('msgNomina', '¡Exportación exitosa! Se ha creado un nuevo archivo en tu Google Drive.', 'success');
+        window.open(response.url, '_blank');
+      } else {
+        showMessage('msgNomina', `Error al exportar: ${response.message}`, 'error');
+      }
+    })
+    .withFailureHandler(error => showMessage('msgNomina', `Error: ${error.message}`, 'error'))
+    .exportarNominaMaestra(mes, anio);
+}

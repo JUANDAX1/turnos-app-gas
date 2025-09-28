@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style><?!= include('styles.html'); ?></style>
+</head>
+<body style="height: auto; overflow: auto;"> <div class="main-content" style="height: auto;">
+    <div class="content-header"><h2>Informe Maestro de Nómina</h2></div>
+    <div class="content-body">
+      
+      <div class="card">
+        <div class="card-body">
+          <div class="form-grid" style="grid-template-columns: 1fr 1fr 1fr 1fr; align-items: flex-end;">
+            <div class="form-group">
+              <label for="nomina-mes">Mes</label>
+              <select id="nomina-mes"></select>
+            </div>
+            <div class="form-group">
+              <label for="nomina-anio">Año</label>
+              <input type="number" id="nomina-anio">
+            </div>
+            <div class="form-group">
+              <button class="btn btn-primary" onclick="ejecutarCalculoNomina()">Calcular Informe</button>
+            </div>
+            <div class="form-group">
+              <button class="btn btn-success" onclick="exportarNomina()">Exportar a Sheets</button>
+            </div>
+          </div>
+          <div id="msgNomina" style="margin-top: 15px;"></div>
+        </div>
+      </div>
+      
+      <div id="loadingNomina" class="loading" style="display: none;">Calculando, por favor espera...</div>
+      <div id="resultadosNomina">
+        <div class="message info">Selecciona un período y haz clic en "Calcular Informe" para empezar.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <script><?!= include('nomina_js.html'); ?></script>
+</body>
+</html>
