@@ -12,13 +12,14 @@ function handleLogin(user) {
   const loadingScreen = document.getElementById('loading-screen');
   if (user && user.rol && user.rol !== 'SIN_ACCESO') {
     USER_ROLE = user.rol;
+    webAppUrl = user.url; // <-- Asignamos la URL directamente desde el objeto 'user'
+
     loadingScreen.style.display = 'none';
     document.getElementById('app-container').style.visibility = 'visible';
     setupUIForRole();
     setDefaultDates();
     cargarListasDesplegables();
-    // Obtener la URL base de la app
-    google.script.run.withSuccessHandler(url => { webAppUrl = url; }).getWebAppUrl();
+    // Ya no necesitamos la llamada separada a getWebAppUrl()
   } else {
     loadingScreen.innerHTML = `<div class="login-card"><h2>Acceso Denegado</h2><p>No tienes permiso para acceder a esta aplicación. Contacta al administrador.</p><p><i>Tu email: ${user.email}</i></p></div>`;
   }
@@ -185,61 +186,6 @@ function mostrarColaboradores() {
       showMessage(container.id, `Error: ${error.message}`, 'error');
     })
     .obtenerColaboradores();
-}
-
-function solicitarCalculoNomina(event) {
-  event.preventDefault();
-  const mes = document.getElementById('nomina-mes').value;
-  const anio = document.getElementById('nomina-anio').value;
-  const loading = document.getElementById('loadingNomina');
-  const container = document.getElementById('resultadosNomina');
-
-  loading.style.display = 'block';
-  container.innerHTML = '';
-
-  google.script.run
-    .withSuccessHandler(resultados => {
-      loading.style.display = 'none';
-      if (resultados.error) {
-        container.innerHTML = `<div class="message error">${resultados.error}</div>`;
-        return;
-      }
-      if (!resultados || resultados.length === 0) {
-        container.innerHTML = '<div class="message">No se encontraron datos para el período seleccionado.</div>';
-        return;
-      }
-      let table = `
-        <table>
-          <thead>
-            <tr>
-              <th>Nombre</th>
-              <th>Sueldo Base</th>
-              <th>Días Trab.</th>
-              <th>Faltas Injust.</th>
-              <th>Sueldo Calculado</th>
-            </tr>
-          </thead>
-          <tbody>
-      `;
-      resultados.forEach(res => {
-        table += `
-          <tr>
-            <td>${res.nombre}</td>
-            <td>${formatearMoneda(res.sueldoBase)}</td>
-            <td>${res.diasTrabajados}</td>
-            <td>${res.faltasInjustificadas}</td>
-            <td><strong>${formatearMoneda(res.sueldoCalculado)}</strong></td>
-          </tr>
-        `;
-      });
-      table += '</tbody></table>';
-      container.innerHTML = table;
-    })
-    .withFailureHandler(error => {
-      loading.style.display = 'none';
-      showMessage(container.id, `Error: ${error.message}`, 'error');
-    })
-    .calcularNomina(mes, anio);
 }
 
 function formatearMoneda(valor) {
@@ -1326,5 +1272,13 @@ function solicitarEliminarHaber(idHaber) {
         }
       })
       .eliminarOtroHaber(idHaber);
+  }
+}
+
+function openNominaPage(){
+  if(webAppUrl){
+    window.open(webAppUrl + '?page=nomina', '_blank');
+  } else {
+    alert("La URL de la aplicación aún no se ha cargado. Por favor, espere y vuelva a intentarlo.");
   }
 }

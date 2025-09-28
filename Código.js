@@ -135,6 +135,13 @@ function doGet(e) {
       .setTitle("Ponderación de Bonos");
   }
   
+  if (e.parameter.page === 'nomina') { // <-- NUEVA CONDICIÓN
+    return HtmlService.createTemplateFromFile('nomina.html')
+      .evaluate()
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+      .setTitle("Informe Maestro de Nómina");
+  }
+  
   // Sirve la página principal por defecto
   return HtmlService.createTemplateFromFile('index.html')
       .evaluate()
@@ -156,12 +163,13 @@ function include(filename) {
 }
 
 /**
- * Verifica el email del usuario activo contra la lista de usuarios autorizados.
- * @returns {object} Un objeto con el email y el rol del usuario.
+ * Verifica el email del usuario activo y AHORA también devuelve la URL de la Web App.
+ * @returns {object} Un objeto con el email, el rol y la url de la aplicación.
  */
 function verificarAcceso() {
   try {
     const email = Session.getActiveUser().getEmail();
+    const url = ScriptApp.getService().getUrl(); // <-- Obtenemos la URL aquí
     const ss = SpreadsheetApp.openById(getSpreadsheetId());
     const sheetUsuarios = ss.getSheetByName(HOJA_USUARIOS);
     const data = sheetUsuarios.getDataRange().getValues();
@@ -171,11 +179,12 @@ function verificarAcceso() {
       const userRol = data[i][1].toString().trim().toUpperCase();
 
       if (userEmail === email.toLowerCase()) {
-        return { email: email, rol: userRol };
+        // Devolvemos todo junto: email, rol y la URL.
+        return { email: email, rol: userRol, url: url };
       }
     }
     
-    return { email: email, rol: ROLES.SIN_ACCESO };
+    return { email: email, rol: ROLES.SIN_ACCESO, url: url };
   } catch (e) {
     console.error("Error en verificarAcceso:", e);
     return { email: Session.getActiveUser().getEmail(), rol: ROLES.SIN_ACCESO, error: e.message };
@@ -2221,5 +2230,204 @@ function eliminarOtroHaber(idHaber) {
   } catch (e) {
     console.error("Error en eliminarOtroHaber:", e);
     return `Error al eliminar: ${e.message}`;
+  }
+}
+
+// ===============================================================
+// INFORME MAESTRO DE NÓMINA
+// ===============================================================
+
+/**
+ * Realiza el cálculo completo del informe maestro de nómina para un mes y año dados.
+ * @param {number} mes - El mes (1-12).
+ * @param {number} anio - El año.
+ * @returns {object} Un objeto con los datos procesados y la lista de haberes dinámicos.
+ */
+function calcularNominaMaestra(mes, anio) {
+  const ss = SpreadsheetApp.openById(getSpreadsheetId());
+  const mesJs = mes - 1; // Mes para cálculos en JavaScript (0-11)
+  const inicioPeriodo = new Date(anio, mesJs, 1);
+  const finPeriodo = new Date(anio, mesJs + 1, 0, 23, 59, 59);
+
+  // --- 1. OBTENER DATOS DE TODAS LAS HOJAS ---
+  const colaboradores = ss.getSheetByName(HOJA_COLABORADORES).getDataRange().getValues().slice(1).filter(c => c[6] === 'Activo');
+  const asistencias = ss.getSheetByName(HOJA_ASISTENCIA).getDataRange().getValues().slice(1);
+  const contabilidad = ss.getSheetByName(HOJA_CONTABILIDAD).getDataRange().getValues().slice(1);
+  const otrosHaberesData = ss.getSheetByName(HOJA_OTROS_HABERES).getDataRange().getValues().slice(1);
+  
+  const sheetBonos = ss.getSheetByName("Bonos a Pagar");
+  const bonosData = sheetBonos ? sheetBonos.getDataRange().getValues() : [];
+
+  // --- 2. PROCESAR DATOS POR CADA COLABORADOR ---
+  const resultados = [];
+  const haberesDinamicos = new Set(); // Para guardar los nombres de las columnas de bonos dinámicos
+
+  colaboradores.forEach(col => {
+    const idColaborador = col[0];
+    const nombreColaborador = col[1];
+    const sueldoBase = col[5] || 0;
+
+    // --- Sección 2: Sueldo Base ---
+    const asistenciasCol = asistencias.filter(a => {
+      const fechaAsistencia = new Date(a[2]);
+      return a[1] == idColaborador && fechaAsistencia >= inicioPeriodo && fechaAsistencia <= finPeriodo;
+    });
+    const estadosPermiso = ["Trabajado", "No citado"];
+    const permisos = asistenciasCol.filter(a => !estadosPermiso.includes(a[3])).length;
+    const diasTrabajados = 30 - permisos;
+    const sueldoLiq = (sueldoBase / 30) * diasTrabajados;
+
+    // --- Sección 3: Descuentos ---
+    const movimientosContables = contabilidad
+      .filter(m => m[0] == idColaborador && new Date(m[6]) >= inicioPeriodo && new Date(m[6]) <= finPeriodo)
+      .sort((a, b) => new Date(a[6]) - new Date(b[6])); // Ordenar por fecha para anticipos
+
+    const anticipos = movimientosContables.filter(m => m[2] === 'ANTICIPO');
+    const anticipo1 = anticipos.length > 0 ? (anticipos[0][4] || 0) : 0;
+    const anticipo2 = anticipos.length > 1 ? (anticipos[1][4] || 0) : 0;
+    
+    const otrosDescuentos = movimientosContables
+      .filter(m => m[2] !== 'ANTICIPO')
+      .reduce((acc, m) => acc + (m[4] || 0) - (m[3] || 0), 0);
+      
+    const totalDescuentos = anticipo1 + anticipo2 + otrosDescuentos;
+    const sueldoLiq2 = sueldoLiq - totalDescuentos;
+
+    // --- Sección 4: Bonificaciones ---
+    let bonoTrabajos = 0;
+    if (bonosData.length > 0) {
+      const headerBonos = bonosData[0];
+      const colIndex = headerBonos.findIndex(h => h.includes(`(${idColaborador})`));
+      if (colIndex !== -1) {
+        // El total es el último valor numérico en la columna
+        for (let i = bonosData.length - 1; i > 0; i--) {
+          const valor = parseFloat(bonosData[i][colIndex]);
+          if (!isNaN(valor)) {
+            bonoTrabajos = valor;
+            break;
+          }
+        }
+      }
+    }
+    
+    const otrosHaberesCol = otrosHaberesData.filter(h => h[1] == idColaborador && new Date(h[3]) >= inicioPeriodo && new Date(h[3]) <= finPeriodo);
+    const haberesAgrupados = {};
+    otrosHaberesCol.forEach(h => {
+      const tipoHaber = h[4];
+      const monto = parseFloat(h[5]) || 0;
+      haberesDinamicos.add(tipoHaber);
+      haberesAgrupados[tipoHaber] = (haberesAgrupados[tipoHaber] || 0) + monto;
+    });
+
+    let totalBonos = bonoTrabajos;
+    Object.values(haberesAgrupados).forEach(monto => totalBonos += monto);
+    
+    // --- Sección 5: Totales Finales ---
+    const totalLiquidoPago = sueldoLiq2 + totalBonos;
+    const totalMes = totalLiquidoPago + totalDescuentos;
+
+    resultados.push({
+      id: idColaborador,
+      nombre: nombreColaborador,
+      sueldoBase: sueldoBase,
+      permisos: permisos,
+      diasTrabajados: diasTrabajados,
+      sueldoLiq: sueldoLiq,
+      anticipo1: anticipo1,
+      anticipo2: anticipo2,
+      descVarios: otrosDescuentos,
+      totalDescuentos: totalDescuentos,
+      sueldoLiq2: sueldoLiq2,
+      bonoTrabajos: bonoTrabajos,
+      otrosHaberes: haberesAgrupados,
+      totalBonos: totalBonos,
+      totalLiquidoPago: totalLiquidoPago,
+      totalMes: totalMes
+    });
+  });
+
+  return { data: resultados, haberesHeaders: Array.from(haberesDinamicos).sort() };
+}
+
+
+/**
+ * Exporta el informe maestro a una nueva hoja de cálculo de Google Sheets con fórmulas.
+ * @param {number} mes - El mes (1-12).
+ * @param {number} anio - El año.
+ * @returns {object} Objeto con la URL del archivo creado o un mensaje de error.
+ */
+function exportarNominaMaestra(mes, anio) {
+  try {
+    const { data, haberesHeaders } = calcularNominaMaestra(mes, anio);
+    if (!data || data.length === 0) {
+      return { success: false, message: "No hay datos para exportar." };
+    }
+
+    const nombreArchivo = `Informe Nomina - ${mes}-${anio}`;
+    const newSs = SpreadsheetApp.create(nombreArchivo);
+    const sheet = newSs.getActiveSheet();
+    
+    // --- CONSTRUIR CABECERA ---
+    const header = [
+      "#", "Colaborador", "ID", "SUELDO BASE", "PERMISO", "DIAS TRABAJADOS", "SUELDO LIQ.",
+      "ANTICIPO 1", "ANTICIPO 2", "DESC. REND/VARIOS", "TOTAL DESCUENTOS", "SUELDO LIQUIDO 2",
+      "BONO TRABAJOS", ...haberesHeaders, "TOTAL BONOS", "TOTAL LIQUIDO A PAGO", "TOTAL MES"
+    ];
+    sheet.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight("bold").setBackground("#4a86e8").setFontColor("white");
+
+    // --- CONSTRUIR FILAS CON FÓRMULAS ---
+    const dataRows = [];
+    const formulaRows = [];
+    
+    data.forEach((col, index) => {
+      const rowNum = index + 2; // Fila actual en la hoja de cálculo
+      const haberesValues = haberesHeaders.map(h => col.otrosHaberes[h] || "");
+
+      // Valores que se insertan directamente
+      const values = [
+        index + 1, col.nombre, col.id, col.sueldoBase, col.permisos, "", "",
+        col.anticipo1, col.anticipo2, col.descVarios, "", "",
+        col.bonoTrabajos, ...haberesValues, "", "", ""
+      ];
+      dataRows.push(values);
+
+      // Fórmulas que se insertarán por separado
+      const bonoTrabajosCol = "M";
+      const primerHaberCol = "N";
+      const ultimoHaberCol = String.fromCharCode(primerHaberCol.charCodeAt(0) + haberesHeaders.length - 1);
+      const totalBonosCol = String.fromCharCode(ultimoHaberCol.charCodeAt(0) + 1);
+      const liquidoPagoCol = String.fromCharCode(totalBonosCol.charCodeAt(0) + 1);
+      const totalMesCol = String.fromCharCode(liquidoPagoCol.charCodeAt(0) + 1);
+      
+      const formulas = [
+        "", "", "", "", "",
+        `=30-E${rowNum}`, // Dias Trabajados
+        `=ROUND(D${rowNum}/30*F${rowNum}, 0)`, // Sueldo Liq
+        "", "", "",
+        `=SUM(H${rowNum}:J${rowNum})`, // Total Descuentos
+        `=G${rowNum}-K${rowNum}`, // Sueldo Liquido 2
+        "", ...Array(haberesHeaders.length).fill(""), // Espacios para bonos y haberes
+        `=SUM(${bonoTrabajosCol}${rowNum}:${ultimoHaberCol}${rowNum})`, // Total Bonos
+        `=L${rowNum}+${totalBonosCol}${rowNum}`, // Total Liquido a Pago
+        `=${liquidoPagoCol}${rowNum}+K${rowNum}` // Total Mes
+      ];
+      formulaRows.push(formulas);
+    });
+
+    // --- ESCRIBIR DATOS Y FÓRMULAS EN LA HOJA ---
+    sheet.getRange(2, 1, dataRows.length, dataRows[0].length).setValues(dataRows);
+    sheet.getRange(2, 1, formulaRows.length, formulaRows[0].length).setFormulas(formulaRows);
+
+    // Formatear columnas de moneda
+    sheet.getRange("D:D").setNumberFormat("$#,##0");
+    sheet.getRange("G:L").setNumberFormat("$#,##0");
+    sheet.getRange(`M:${totalMesCol}`).setNumberFormat("$#,##0");
+
+    sheet.autoResizeColumns(1, header.length);
+
+    return { success: true, url: newSs.getUrl() };
+  } catch(e) {
+    console.error("Error al exportar nómina:", e);
+    return { success: false, message: e.message };
   }
 }
