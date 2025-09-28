@@ -1956,15 +1956,14 @@ function guardarBonosAPagar(dataTabla) {
     sheet.getRange(1, 1, numRows, numCols).setValues(dataTabla);
 
     // --- Aplicar Formato ---
-    // Formato de cabecera
     sheet.getRange(1, 1, 1, numCols).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
-    // Formato de fila de totales
     sheet.getRange(numRows, 1, 1, numCols).setBackground("#f0f0f0").setFontWeight("bold");
-    // Formato de columna de totales
-     sheet.getRange(1, numCols, numRows, 1).setFontWeight("bold");
+    sheet.getRange(1, numCols, numRows, 1).setFontWeight("bold");
 
-    // Formato de moneda para los valores numéricos (evitando cabeceras y primera columna)
-    sheet.getRange(2, 2, numRows - 1, numCols - 1).setNumberFormat('$#,##0.00');
+    // --- CORRECCIÓN CLAVE EN EL FORMATO DE NÚMERO ---
+    // ANTES: .setNumberFormat('$#,##0.00');
+    // AHORA: Formato de moneda sin decimales
+    sheet.getRange(2, 2, numRows - 1, numCols - 1).setNumberFormat('$#,##0');
     
     sheet.autoResizeColumns(1, numCols);
 

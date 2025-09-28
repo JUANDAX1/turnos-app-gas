@@ -361,37 +361,47 @@ function renderResultadosTabla(matrizBonos, proyectos, colaboradores) {
         tableHtml += `<tr><td><strong>${p}</strong></td>`;
         colaboradores.forEach((c) => {
             const bono = (matrizBonos[p] && matrizBonos[p][c.id]) ? matrizBonos[p][c.id] : 0;
-            tableHtml += `<td>${formatearMoneda(bono)}</td>`;
+            // Usamos Math.round() para redondear el valor antes de mostrarlo
+            tableHtml += `<td>${formatearMoneda(Math.round(bono))}</td>`;
             totalProyecto += bono;
             totalesColaborador[c.id] += bono;
         });
         granTotal += totalProyecto;
-        tableHtml += `<td class="bono-total-col">${formatearMoneda(totalProyecto)}</td>`;
+        // También redondeamos el total del proyecto para la vista
+        tableHtml += `<td class="bono-total-col">${formatearMoneda(Math.round(totalProyecto))}</td>`;
         tableHtml += '</tr>';
     });
 
     tableHtml += '</tbody><tfoot><tr class="table-secondary"><td><strong>Total Colaborador</strong></td>';
     colaboradores.forEach(c => {
-        tableHtml += `<td><strong>${formatearMoneda(totalesColaborador[c.id])}</strong></td>`;
+        // Y redondeamos los totales de cada colaborador
+        tableHtml += `<td><strong>${formatearMoneda(Math.round(totalesColaborador[c.id]))}</strong></td>`;
     });
-    tableHtml += `<td class="bono-total-col"><strong>${formatearMoneda(granTotal)}</strong></td>`;
+    // Y el gran total
+    tableHtml += `<td class="bono-total-col"><strong>${formatearMoneda(Math.round(granTotal))}</strong></td>`;
     tableHtml += '</tr></tfoot></table>';
     
-    // Preparar datos para guardar en hoja
+    // --- CORRECCIÓN CLAVE AL PREPARAR DATOS PARA GUARDAR ---
     const headerRow = ['Proyecto', ...colaboradores.map(c => c.nombre), 'Total Proyecto'];
     const dataRows = proyectos.map(p => {
         const row = [p];
         let totalProyecto = 0;
         colaboradores.forEach(c => {
             const bono = (matrizBonos[p] && matrizBonos[p][c.id]) ? matrizBonos[p][c.id] : 0;
-            row.push(bono.toFixed(2));
+            // ANTES: row.push(bono.toFixed(2));
+            // AHORA: Redondeamos a entero
+            row.push(Math.round(bono)); 
             totalProyecto += bono;
         });
-        row.push(totalProyecto.toFixed(2));
+        // ANTES: row.push(totalProyecto.toFixed(2));
+        // AHORA: Redondeamos a entero
+        row.push(Math.round(totalProyecto));
         return row;
     });
-    const footerRowValues = colaboradores.map(c => totalesColaborador[c.id].toFixed(2));
-    const footerRow = ['Total Colaborador', ...footerRowValues, granTotal.toFixed(2)];
+    // ANTES: const footerRowValues = colaboradores.map(c => totalesColaborador[c.id].toFixed(2));
+    // AHORA: Redondeamos a entero
+    const footerRowValues = colaboradores.map(c => Math.round(totalesColaborador[c.id]));
+    const footerRow = ['Total Colaborador', ...footerRowValues, Math.round(granTotal)];
     datosTablaResultados = [headerRow, ...dataRows, footerRow];
 
     container.innerHTML = tableHtml;
