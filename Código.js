@@ -2278,7 +2278,7 @@ function calcularNominaMaestra(mes, anio) {
 
   // --- 2. PROCESAR DATOS POR CADA COLABORADOR ---
   const resultados = [];
-  const haberesDinamicos = new Set(); // Para guardar los nombres de las columnas de bonos dinámicos
+  const haberesDinamicos = new Set(); 
 
   colaboradores.forEach(col => {
     const idColaborador = col[0];
@@ -2297,36 +2297,47 @@ function calcularNominaMaestra(mes, anio) {
 
     // --- Sección 3: Descuentos ---
     const movimientosContables = contabilidad
-      .filter(m => m[0] == idColaborador && new Date(m[6]) >= inicioPeriodo && new Date(m[6]) <= finPeriodo)
-      .sort((a, b) => new Date(a[6]) - new Date(b[6])); // Ordenar por fecha para anticipos
+      .filter(m => m[0] == idColaborador && new Date(m[6]) >= inicioPeriodo && new Date(m[6]) <= finPeriodo);
 
-    const anticipos = movimientosContables.filter(m => m[2] === 'ANTICIPO');
-    const anticipo1 = anticipos.length > 0 ? (anticipos[0][4] || 0) : 0;
-    const anticipo2 = anticipos.length > 1 ? (anticipos[1][4] || 0) : 0;
-    
+    const totalAnticipos = movimientosContables
+      .filter(m => (m[2] || '').toUpperCase().includes('ANTICIPO'))
+      .reduce((acc, m) => acc + (m[4] || 0), 0);
+
     const otrosDescuentos = movimientosContables
-      .filter(m => m[2] !== 'ANTICIPO')
+      .filter(m => !(m[2] || '').toUpperCase().includes('ANTICIPO'))
       .reduce((acc, m) => acc + (m[4] || 0) - (m[3] || 0), 0);
-      
+    
+    const anticipo1 = totalAnticipos;
+    const anticipo2 = 0;
     const totalDescuentos = anticipo1 + anticipo2 + otrosDescuentos;
     const sueldoLiq2 = sueldoLiq - totalDescuentos;
-
-    // --- Sección 4: Bonificaciones ---
+    
+    // --- Sección 4: Bonificaciones (LÓGICA CORREGIDA PARA BUSCAR POR NOMBRE) ---
     let bonoTrabajos = 0;
-    if (bonosData.length > 1) { // Asegurarse de que hay datos además de la cabecera
-      const headerBonos = bonosData[0];
-      const colIndex = headerBonos.findIndex(h => h.includes(`(${idColaborador})`));
+    if (bonosData.length > 1) {
+      const headerBonos = bonosData[0]; 
+      const totalRowIndex = bonosData.findIndex(row => row[0] === 'Total Colaborador');
 
-      if (colIndex !== -1) {
-        // La última fila contiene los totales.
-        const totalRow = bonosData[bonosData.length - 1];
+      if (totalRowIndex !== -1) {
+        const totalRow = bonosData[totalRowIndex]; 
         
-        // *** CORRECCIÓN APLICADA AQUÍ ***
-        // Usamos la nueva función para convertir el valor de texto a número
-        const valor = parsearMoneda(totalRow[colIndex]);
+        // *** INICIO DE LA CORRECCIÓN CLAVE ***
+        // Normalizamos el nombre del colaborador (quitamos espacios, a mayúsculas)
+        const nombreNormalizado = nombreColaborador.replace(/\s/g, '').toUpperCase();
         
-        if (!isNaN(valor)) {
+        // Buscamos en la cabecera un nombre que, al normalizarlo, coincida
+        const colIndex = headerBonos.findIndex(h => {
+          if (!h || typeof h !== 'string') return false;
+          const headerNormalizado = h.replace(/\s/g, '').toUpperCase();
+          return headerNormalizado === nombreNormalizado;
+        });
+        // *** FIN DE LA CORRECCIÓN CLAVE ***
+
+        if (colIndex !== -1) {
+          const valor = parsearMoneda(totalRow[colIndex]);
+          if (!isNaN(valor)) {
             bonoTrabajos = valor;
+          }
         }
       }
     }
