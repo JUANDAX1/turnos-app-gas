@@ -279,23 +279,79 @@ function guardarFilaPonderacion(row) {
 }
 
 function iniciarCalculoBonos() {
-  showPonderacionMessage('Iniciando cálculo... Obteniendo días trabajados.', 'info', 10000);
-  document.getElementById('btn-calcular-bonos').disabled = true;
+  showPonderacionMessage('Guardando ponderaciones actuales antes de calcular...', 'info', 10000);
+  const btn = document.getElementById('btn-calcular-bonos');
+  btn.disabled = true;
 
+  // Paso 1: Recolectar todos los datos de ponderación de la tabla actual
+  const datosParaGuardar = {};
+  const filasProyectos = document.querySelectorAll('#ponderacion-table-container tbody tr');
+  
+  if (filasProyectos.length === 0) {
+      showPonderacionMessage('No hay proyectos en la tabla para calcular.', 'error');
+      btn.disabled = false;
+      return;
+  }
+
+  filasProyectos.forEach(row => {
+    const nombreProyecto = row.dataset.proyectoNombre;
+    datosParaGuardar[nombreProyecto] = {};
+
+    // Buscamos los inputs, que siempre tienen el data-colab-id
+    row.querySelectorAll('input.input-ponderacion').forEach(input => {
+      const colabId = input.dataset.colabId;
+      let valor;
+      
+      // Si la fila está en modo edición, tomamos el valor del input; si no, del span
+      if (input.style.display === 'none') {
+        valor = parseInt(input.closest('td').querySelector('.valor-ponderacion').textContent, 10);
+      } else {
+        valor = parseInt(input.value, 10);
+      }
+      
+      datosParaGuardar[nombreProyecto][colabId] = isNaN(valor) ? 0 : valor;
+    });
+  });
+
+  // Paso 2: Actualizar nuestro objeto global localmente. Esto evita tener que volver a pedir los datos del servidor.
+  datosPonderacionGlobal.proyectos.forEach(proyecto => {
+      if (datosParaGuardar[proyecto.nombre]) {
+          proyecto.ponderaciones = datosParaGuardar[proyecto.nombre];
+      }
+  });
+  
+  // Paso 3: Llamar a la nueva función del backend para guardar todos los pesos
   google.script.run
-    .withSuccessHandler(diasTrabajados => {
-        if (diasTrabajados.error) {
-            showPonderacionMessage(`Error al obtener días trabajados: ${diasTrabajados.error}`, 'error');
-            document.getElementById('btn-calcular-bonos').disabled = false;
-            return;
-        }
-        calcularYRenderizarBonos(diasTrabajados);
+    .withSuccessHandler(response => {
+      if (response.success) {
+        showPonderacionMessage('Ponderaciones guardadas. Obteniendo días trabajados...', 'info');
+        
+        // Paso 4: Si se guardó correctamente, procedemos con el cálculo (esta es la lógica que ya tenías)
+        google.script.run
+          .withSuccessHandler(diasTrabajados => {
+              if (diasTrabajados.error) {
+                  showPonderacionMessage(`Error al obtener días trabajados: ${diasTrabajados.error}`, 'error');
+                  btn.disabled = false;
+                  return;
+              }
+              calcularYRenderizarBonos(diasTrabajados);
+          })
+          .withFailureHandler(err => {
+              showPonderacionMessage(`Error al obtener días trabajados: ${err.message}`, 'error');
+              btn.disabled = false;
+          })
+          .obtenerDiasTrabajadosBonos();
+
+      } else {
+        showPonderacionMessage(`Error al guardar ponderaciones: ${response.message}`, 'error');
+        btn.disabled = false;
+      }
     })
     .withFailureHandler(err => {
-        showPonderacionMessage(`Error al llamar al backend: ${err.message}`, 'error');
-        document.getElementById('btn-calcular-bonos').disabled = false;
+      showPonderacionMessage(`Error de comunicación al guardar: ${err.message}`, 'error');
+      btn.disabled = false;
     })
-    .obtenerDiasTrabajadosBonos();
+    .guardarPesosPonderacionBatch(datosParaGuardar); // <-- Nueva función de backend
 }
 
 function calcularYRenderizarBonos(diasTrabajados) {

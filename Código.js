@@ -1929,6 +1929,94 @@ function guardarPonderacionFila(dataFila) {
 }
 
 /**
+ * Guarda un lote completo de ponderaciones de proyectos desde la interfaz.
+ * @param {object} datos - Objeto con la estructura { nombreProyecto: { colabId: peso, ... }, ... }.
+ * @returns {object} Un objeto con { success: true/false, message: '...' }.
+ */
+function guardarPesosPonderacionBatch(datos) {
+  try {
+    if (!datos || Object.keys(datos).length === 0) {
+      return { success: true, message: "No se enviaron datos nuevos para guardar." };
+    }
+
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    let sheet = ss.getSheetByName(HOJA_PONDERACION);
+    if (!sheet) {
+      sheet = ss.insertSheet(HOJA_PONDERACION);
+      sheet.getRange(1, 1).setValue("Proyecto").setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+    }
+
+    // --- Obtener estado actual de la hoja y mapeos ---
+    const sheetData = sheet.getDataRange().getValues();
+    const headers = sheetData.length > 0 ? [...sheetData[0]] : ["Proyecto"];
+    const mapaNombreAColumna = new Map(headers.map((h, i) => [h, i]));
+
+    const sheetColaboradores = ss.getSheetByName(HOJA_COLABORADORES);
+    const colaboradoresData = sheetColaboradores.getDataRange().getValues().slice(1);
+    const mapaIdANombre = new Map(colaboradoresData.map(row => [row[0].toString().trim(), row[1].toString().trim()]));
+
+    // --- Sincronizar Cabeceras (Añadir nuevas columnas si es necesario) ---
+    const todosColaboradoresIds = new Set();
+    Object.values(datos).forEach(ponderaciones => {
+      Object.keys(ponderaciones).forEach(id => todosColaboradoresIds.add(id));
+    });
+
+    let headerChanged = false;
+    todosColaboradoresIds.forEach(colabId => {
+      const nombreColab = mapaIdANombre.get(colabId);
+      if (nombreColab && !mapaNombreAColumna.has(nombreColab)) {
+        headers.push(nombreColab);
+        mapaNombreAColumna.set(nombreColab, headers.length - 1);
+        headerChanged = true;
+      }
+    });
+
+    if (headerChanged) {
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+    }
+
+    // --- Actualizar los datos en una matriz en memoria ---
+    const mapaProyectoAFila = new Map(sheetData.slice(1).map((row, i) => [row[0], i])); 
+    const datosParaEscribir = sheetData.length > 1 ? sheetData.slice(1) : [];
+
+    for (const [nombreProyecto, ponderaciones] of Object.entries(datos)) {
+      let rowIndex = mapaProyectoAFila.get(nombreProyecto);
+      
+      if (rowIndex === undefined) {
+        // Si el proyecto es nuevo, lo preparamos para añadirlo al final
+        const nuevaFila = new Array(headers.length).fill('');
+        nuevaFila[0] = nombreProyecto;
+        datosParaEscribir.push(nuevaFila);
+        rowIndex = datosParaEscribir.length - 1;
+      }
+
+      for (const [colabId, peso] of Object.entries(ponderaciones)) {
+        const nombreColab = mapaIdANombre.get(colabId);
+        if (nombreColab) {
+          const colIndex = mapaNombreAColumna.get(nombreColab);
+          if (colIndex !== undefined) {
+            datosParaEscribir[rowIndex][colIndex] = peso;
+          }
+        }
+      }
+    }
+    
+    // --- Escribir toda la matriz actualizada de una sola vez ---
+    if (datosParaEscribir.length > 0) {
+      if (sheet.getLastRow() > 1) {
+          sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).clearContent();
+      }
+      sheet.getRange(2, 1, datosParaEscribir.length, headers.length).setValues(datosParaEscribir);
+    }
+
+    return { success: true, message: "Ponderaciones guardadas correctamente." };
+  } catch (e) {
+    console.error("Error en guardarPesosPonderacionBatch:", e);
+    return { success: false, message: `Error al guardar: ${e.message}` };
+  }
+}
+
+/**
  * Guarda los resultados del cálculo de bonos en una nueva hoja llamada 'Bonos a Pagar'.
  * @param {Array<Array<string>>} dataTabla - Un array 2D con los datos de la tabla de resultados.
  * @returns {object} Un objeto con { success: true/false, message: '...' }.
