@@ -127,6 +127,8 @@ function showTab(tabName, clickedLink) {
 
   if (tabName === 'asistencia') {
     cargarVistaAsistencia();
+  } else if (tabName === 'consultas') {
+    cargarListasDesplegables(); 
   } else if (tabName === 'fondoscaja') {
     cargarListasFondosCaja();
     cargarResumenSaldos();

@@ -833,8 +833,12 @@ function consultarAsistencias(filtros) {
     }, {});
 
     const asistenciaData = sheetAsistencia.getDataRange().getValues().slice(1);
-    const fechaDesde = new Date(filtros.fechaDesde.replace(/-/g, '\/') + ' 00:00:00');
-    const fechaHasta = new Date(filtros.fechaHasta.replace(/-/g, '\/') + ' 23:59:59');
+    const fechaDesde = new Date(filtros.fechaDesde);
+    const fechaHasta = new Date(filtros.fechaHasta);
+
+    // Nos aseguramos de cubrir el día completo
+    fechaDesde.setHours(0, 0, 0, 0);
+    fechaHasta.setHours(23, 59, 59, 999);
 
     const resultados = asistenciaData.filter(fila => {
       const fechaRegistro = new Date(fila[2]);
