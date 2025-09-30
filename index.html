@@ -330,14 +330,16 @@
 
           <div class="card">
             <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-              <span>Resumen de Saldos</span>
+              <!-- <span>Resumen de Saldos</span> -->
               <button class="btn btn-sm btn-secondary" onclick="cargarResumenSaldos()">Actualizar Saldos</button>
+              <div class="card-header">Muestra los saldos pendientes por devolución de dinero, boletas o liquidación a fin de mes.</div>
             </div>
             <div class="card-body">
               <div id="loadingSaldos" class="loading">Cargando...</div>
               <div class="table-container" id="tablaSaldos"></div>
               <div class="card">
                 <div class="card-header">Balance de Movimientos</div>
+                <div class="card-header">Movimientos detallados que facilitan el arqueo de caja.</div>
                 <div class="card-body">
                   <form id="formBalance" onsubmit="consultarBalance(event)" class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
                     <div class="form-group">
