@@ -1350,6 +1350,9 @@ function generarValeCaja(movimiento, colaborador) {
 
   body.appendParagraph('\n').appendPageBreak();
 
+  body.appendParagraph('\nFirma del Colaborador: ____________________________');
+  body.appendParagraph('\nFirma y Timbre del Administrador: ____________________________');
+
   // Segunda copia
   body.appendParagraph('COPIA - Colaborador').setHeading(DocumentApp.ParagraphHeading.HEADING2);
   const tabla2 = body.appendTable();
@@ -1363,16 +1366,17 @@ function generarValeCaja(movimiento, colaborador) {
   row.appendTableCell('Monto entregado');
   row.appendTableCell(`$${Number(monto).toFixed(2)}`);
 
-  body.appendParagraph('\nFirma del Colaborador: ____________________________');
-  body.appendParagraph('\nFirma y Timbre del Administrador: ____________________________');
+  body.appendParagraph('\nDECLARACIÓN:').setBold(true);
+  body.appendParagraph('El dinero entregado debe ser rendido o justificado en el plazo establecido por la empresa. Si el dinero no es rendido en el tiempo establecido, éste podrá ser descontado de la remuneración del colaborador según la normativa interna.');
+  
+  // body.appendParagraph('\nFirma del Colaborador: ____________________________');
+  // body.appendParagraph('\nFirma y Timbre del Administrador: ____________________________');
 
   doc.saveAndClose();
   const fileId = doc.getId();
   const url = doc.getUrl();
   return { fileId: fileId, url: url };
 }
-
-// AGREGA esta nueva función en 'Código.js'
 
 function enviarValePorCorreo(idRegistro) {
   try {
