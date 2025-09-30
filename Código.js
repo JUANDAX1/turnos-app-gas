@@ -1368,7 +1368,7 @@ function generarValeCaja(movimiento, colaborador) {
 
   body.appendParagraph('\nDECLARACIÓN:').setBold(true);
   body.appendParagraph('El dinero entregado debe ser rendido o justificado en el plazo establecido por la empresa. Si el dinero no es rendido en el tiempo establecido, éste podrá ser descontado de la remuneración del colaborador según la normativa interna.');
-  
+
   // body.appendParagraph('\nFirma del Colaborador: ____________________________');
   // body.appendParagraph('\nFirma y Timbre del Administrador: ____________________________');
 
@@ -2536,5 +2536,57 @@ function exportarNominaMaestra(mes, anio) {
   } catch(e) {
     console.error("Error al exportar nómina:", e);
     return { success: false, message: `Error en el servidor: ${e.message}. Detalles: ${e.stack}` };
+  }
+}
+// ===============================================================
+// RESPALDO DE SEGURIDAD DEL SISTEMA
+// ===============================================================
+
+/**
+ * Crea una copia de seguridad completa del sistema, incluyendo la Hoja de Cálculo
+ * y su script vinculado, en una carpeta específica en Google Drive.
+ * @returns {object} Un objeto con un mensaje de éxito o error.
+ */
+function crearRespaldoCompleto() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const nombreOriginal = ss.getName();
+    
+    // 1. Definir la carpeta principal de respaldos
+    const carpetaPrincipalNombre = "RESPALDOS DE SEGURIDAD_SISTEMA NOMINA";
+    let carpetaPrincipal;
+    
+    const carpetas = DriveApp.getFoldersByName(carpetaPrincipalNombre);
+    if (carpetas.hasNext()) {
+      // Si la carpeta ya existe, la usamos
+      carpetaPrincipal = carpetas.next();
+    } else {
+      // Si no existe, la creamos en la raíz de Drive
+      carpetaPrincipal = DriveApp.createFolder(carpetaPrincipalNombre);
+    }
+
+    // 2. Crear una subcarpeta para este respaldo específico con fecha y hora
+    const ahora = new Date();
+    const timestamp = Utilities.formatDate(ahora, Session.getScriptTimeZone(), "yyyy-MM-dd_HH-mm-ss");
+    const carpetaRespaldo = carpetaPrincipal.createFolder(`Respaldo - ${timestamp}`);
+
+    // 3. Crear la copia del archivo de la Hoja de Cálculo
+    const archivoOriginal = DriveApp.getFileById(ss.getId());
+    const nuevoNombre = `${nombreOriginal} (Copia - ${timestamp})`;
+    
+    // Hacemos la copia dentro de la nueva carpeta de respaldo
+    archivoOriginal.makeCopy(nuevoNombre, carpetaRespaldo);
+
+    return {
+      success: true,
+      message: `¡Respaldo creado con éxito! Puede encontrarlo en Google Drive dentro de la carpeta: "${carpetaPrincipalNombre}/${carpetaRespaldo.getName()}"`
+    };
+
+  } catch (e) {
+    console.error("Error en crearRespaldoCompleto:", e);
+    return {
+      success: false,
+      message: `Ocurrió un error al crear el respaldo: ${e.message}`
+    };
   }
 }

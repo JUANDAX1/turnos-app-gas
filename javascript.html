@@ -1282,3 +1282,30 @@ function openNominaPage(){
     alert("La URL de la aplicación aún no se ha cargado. Por favor, espere y vuelva a intentarlo.");
   }
 }
+// ===============================================================
+// FUNCIÓN PARA RESPALDO DEL SISTEMA
+// ===============================================================
+
+function iniciarRespaldo() {
+  // Deshabilitamos el botón para evitar múltiples clics
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = 'Creando respaldo...';
+
+  showMessage('msgConfig', 'Iniciando proceso de respaldo. Esto puede tardar un momento...', 'info');
+
+  google.script.run
+    .withSuccessHandler(response => {
+      showMessage('msgConfig', response.message, response.success ? 'success' : 'error');
+      // Reactivamos el botón
+      btn.disabled = false;
+      btn.textContent = 'Crear Respaldo del Sistema';
+    })
+    .withFailureHandler(error => {
+      showMessage('msgConfig', `Error crítico al crear el respaldo: ${error.message}`, 'error');
+      // Reactivamos el botón
+      btn.disabled = false;
+      btn.textContent = 'Crear Respaldo del Sistema';
+    })
+    .crearRespaldoCompleto();
+}
