@@ -2676,6 +2676,20 @@ function obtenerDatosDashboard() {
         return fechaReg >= inicioMes && fechaReg <= finMes;
       });
 
+      // --- 2.5. Procesar Estadísticas para las Tarjetas ---
+    const totalColaboradoresActivos = colaboradoresActivos.length;
+
+    const hoyKey = Utilities.formatDate(hoy, Session.getScriptTimeZone(), "yyyy-MM-dd");
+    const registrosHoy = registrosMes.filter(reg => {
+      const fechaRegKey = Utilities.formatDate(new Date(reg[2]), Session.getScriptTimeZone(), "yyyy-MM-dd");
+      return fechaRegKey === hoyKey;
+    });
+
+    const asistenciasHoy = registrosHoy.length;
+
+    const estadosAusenciaHoy = ['Libre', 'Licencia Médica', 'Falta Justificada', 'Ausente'];
+    const ausenciasHoy = registrosHoy.filter(reg => estadosAusenciaHoy.includes(reg[3])).length;
+
     // --- 3. Procesar Resumen de Ausencias Registradas ---
     const estadosAusencia = ['Libre', 'Licencia Médica', 'Falta Justificada', 'Ausente'];
     const resumenAusencias = {};
@@ -2725,6 +2739,11 @@ function obtenerDatosDashboard() {
     });
 
     return {
+      stats: {
+        totalColaboradores: totalColaboradoresActivos,
+        asistenciasHoy: asistenciasHoy,
+        ausenciasHoy: ausenciasHoy
+      },
       resumen: Object.values(resumenAusencias),
       sinRegistro: {
         fechas: fechasHeader,

@@ -1402,6 +1402,11 @@ function obtenerLogoBase64() {
  */
 function renderDashboardData(data) {
   // Ocultamos los spinners
+  if (data.stats) {
+  document.getElementById('stat-colaboradores').textContent = data.stats.totalColaboradores || 0;
+  document.getElementById('stat-asistencia-hoy').textContent = data.stats.asistenciasHoy || 0;
+  document.getElementById('stat-ausencias-hoy').textContent = data.stats.ausenciasHoy || 0;
+}
   document.getElementById('loading-dashboard-ausencias').style.display = 'none';
   document.getElementById('loading-dashboard-sin-registro').style.display = 'none';
 
