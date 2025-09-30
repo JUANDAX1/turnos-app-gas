@@ -1372,11 +1372,11 @@ footer.appendParagraph(DIRECCION_EMPRESA)
 
   const tabla = body.appendTable();
   let row = tabla.appendTableRow();
-  row.appendTableCell('Colaborador');
-  row.appendTableCell(nombre);
-  row = tabla.appendTableRow();
-  row.appendTableCell('ID Colaborador');
+  row.appendTableCell('RUT Colaborador');
   row.appendTableCell(idCol);
+  row = tabla.appendTableRow();
+  row.appendTableCell('Nombre Colaborador');
+  row.appendTableCell(nombre);
   row = tabla.appendTableRow();
   row.appendTableCell('Tipo de Registro');
   row.appendTableCell(movimiento.tipoRegistro || '');
@@ -1404,18 +1404,18 @@ footer.appendParagraph(DIRECCION_EMPRESA)
   body.appendParagraph('VALE DE CAJA - copia').setHeading(DocumentApp.ParagraphHeading.HEADING2);
   const tabla2 = body.appendTable();
   row = tabla2.appendTableRow();
-  row.appendTableCell('Colaborador');
+  row.appendTableCell('Rut Colaborador');
+  row.appendTableCell(idCol);
+  row = tabla2.appendTableRow();
+  row.appendTableCell('Nombre Colaborador');
   row.appendTableCell(nombre);
   row = tabla2.appendTableRow();
-  row.appendTableCell('ID Colaborador');
-  row.appendTableCell(idCol);
+  row.appendTableCell('Fecha');
+  row.appendTableCell(fecha);
   row = tabla2.appendTableRow();
   row.appendTableCell('Monto entregado');
   row.appendTableCell(`$${Number(monto).toFixed(2)}`);
-  row = tabla.appendTableRow();
-  row.appendTableCell('Fecha');
-  row.appendTableCell(fecha);
-  row = tabla.appendTableRow();
+  row = tabla2.appendTableRow();
   row.appendTableCell('Detalle');
   row.appendTableCell(detalle);
 
