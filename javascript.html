@@ -10,6 +10,42 @@ document.addEventListener("DOMContentLoaded", function() {
 
 function handleLogin(user) {
   const loadingScreen = document.getElementById('loading-screen');
+  const appContainer = document.getElementById('app-container');
+  const startTime = Date.now();
+  const MIN_DURATION = 1000 * 60; // 5 segundos
+
+  function showApp() {
+    const elapsedTime = Date.now() - startTime;
+    const remainingTime = MIN_DURATION - elapsedTime;
+
+    // Esperamos el tiempo que falte para cumplir los 5 segundos
+    setTimeout(() => {
+      // Aplicamos una transición suave para desaparecer
+      loadingScreen.style.transition = 'opacity 0.5s ease-out';
+      loadingScreen.style.opacity = '0';
+      
+      // Ocultamos completamente el div después de la transición
+      setTimeout(() => {
+         loadingScreen.style.display = 'none';
+      }, 500);
+
+      // Mostramos la aplicación principal
+      appContainer.style.visibility = 'visible';
+      setupUIForRole();
+      setDefaultDates();
+      cargarListasDesplegables();
+      
+      // Aseguramos que se muestre la primera pestaña
+      if (USER_ROLE === 'ADMINISTRADOR') {
+          showTab('dashboard', document.querySelector('#nav-dashboard a'));
+      } else if (USER_ROLE === 'ASISTENTE') {
+          showTab('asistencia', document.querySelector('#nav-asistencia a'));
+      }
+
+    }, Math.max(0, remainingTime)); // Se asegura de no esperar un tiempo negativo
+  }
+
+  // --- Lógica de acceso ---
   if (user && user.rol && user.rol !== 'SIN_ACCESO') {
     USER_ROLE = user.rol;
     webAppUrl = user.url; // <-- Asignamos la URL directamente desde el objeto 'user'
