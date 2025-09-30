@@ -1321,6 +1321,50 @@ function generarValeCaja(movimiento, colaborador) {
   const doc = DocumentApp.create(titulo);
   const body = doc.getBody();
 
+  // 1. Configura el ID de tu logo y la dirección de tu empresa
+const ID_LOGO_DRIVE = '1PYf-nZI_LLOaHZsbYW5I8XSKOpCGBJu3';
+const DIRECCION_EMPRESA = 'Ines de Suarez 1270 Osorno - Chile';
+
+try {
+  // 2. Inserta el logo en el encabezado
+  const header = doc.addHeader();
+  // Limpiamos el encabezado para eliminar párrafos vacíos que puedan causar espacios extra
+  header.clear();
+
+  const logoBlob = DriveApp.getFileById(ID_LOGO_DRIVE).getBlob();
+  const logoImagen = header.appendImage(logoBlob);
+
+  // --- INICIO DE LA CORRECCIÓN ---
+  // Para evitar la deformación, calculamos la proporción original de la imagen
+  const originalWidth = logoImagen.getWidth();
+  const originalHeight = logoImagen.getHeight();
+  const aspectRatio = originalWidth / originalHeight;
+
+  // Definimos el nuevo ancho que deseamos (puedes ajustar este valor)
+  const nuevoAncho = 260; 
+  // Calculamos el nuevo alto manteniendo la proporción correcta
+  const nuevoAlto = nuevoAncho / aspectRatio;
+
+  // Aplicamos las dimensiones corregidas
+  logoImagen.setWidth(nuevoAncho);
+  logoImagen.setHeight(nuevoAlto);
+  // --- FIN DE LA CORRECCIÓN ---
+
+  // Finalmente, centramos la imagen
+  logoImagen.getParent().asParagraph().setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+
+} catch (e) {
+  console.error("Error al cargar el logo desde Drive: " + e.message);
+  doc.getHeader().appendParagraph('Nombre de tu Empresa').setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+}
+
+// 3. Inserta la dirección en el pie de página
+const footer = doc.addFooter();
+footer.appendParagraph(DIRECCION_EMPRESA)
+      .setAlignment(DocumentApp.HorizontalAlignment.CENTER)
+      .setFontSize(8); // Se usa una letra pequeña para el pie de página
+
+
   // Encabezado general
   const estiloTitulo = {};
   body.appendParagraph('VALE DE CAJA').setHeading(DocumentApp.ParagraphHeading.HEADING1);
@@ -1347,12 +1391,13 @@ function generarValeCaja(movimiento, colaborador) {
 
   body.appendParagraph('\nDECLARACIÓN:').setBold(true);
   body.appendParagraph('El dinero entregado debe ser rendido o justificado en el plazo establecido por la empresa. Si el dinero no es rendido en el tiempo establecido, éste podrá ser descontado de la remuneración del colaborador según la normativa interna.');
-
-  body.appendParagraph('\n').appendPageBreak();
-
+  
   body.appendParagraph('\nFirma del Colaborador: ____________________________');
   body.appendParagraph('\nFirma y Timbre del Administrador: ____________________________');
 
+  body.appendParagraph('\n').appendPageBreak();
+
+  
   // Segunda copia
   body.appendParagraph('COPIA - Colaborador').setHeading(DocumentApp.ParagraphHeading.HEADING2);
   const tabla2 = body.appendTable();

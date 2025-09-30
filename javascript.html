@@ -75,21 +75,35 @@ function handleLoginError(error) {
 }
 
 function setupUIForRole() {
-  const navColaboradores = document.getElementById('nav-colaboradores');
-  const navNomina = document.getElementById('nav-nomina');
-  const navConsultas = document.getElementById('nav-consultas');
-  const navConfig = document.getElementById('nav-configuracion');
-  const navDashboard = document.getElementById('nav-dashboard');
-  const navFondosCaja = document.getElementById('nav-fondoscaja');
-
   if (USER_ROLE === 'ASISTENTE') {
-    navColaboradores.style.display = 'none';
-    navNomina.style.display = 'none';
-    navConsultas.style.display = 'none';
-    navConfig.style.display = 'none';
-    navDashboard.style.display = 'none';
-    showTab('asistencia', document.querySelector('#nav-asistencia a'));
+    // 1. Lista de todos los elementos que debemos OCULTAR al Asistente
+    const itemsParaOcultar = [
+      'header-administracion',
+      'nav-proyectos',
+      'nav-colaboradores',
+      'header-remuneraciones',
+      'nav-otroshaberes',
+      'nav-bonificaciones',
+      'nav-ponderar', // ID que agregamos en el HTML
+      'nav-nomina',
+      'header-sistema',
+      'nav-configuracion'
+    ];
+
+    // 2. Recorremos la lista y ocultamos cada elemento
+    itemsParaOcultar.forEach(id => {
+      const elemento = document.getElementById(id);
+      if (elemento) {
+        elemento.style.display = 'none';
+      }
+    });
+
+    // 3. La primera pantalla que verá el Asistente será el Dashboard
+    showTab('dashboard', document.querySelector('#nav-dashboard a'));
+
   } else if (USER_ROLE === 'ADMINISTRADOR') {
+    // El Administrador ve todo, así que no ocultamos nada.
+    // Su primera pantalla también será el Dashboard.
     showTab('dashboard', document.querySelector('#nav-dashboard a'));
     mostrarColaboradores();
   }
@@ -1344,4 +1358,30 @@ function iniciarRespaldo() {
       btn.textContent = 'Crear Respaldo del Sistema';
     })
     .crearRespaldoCompleto();
+}
+// ===============================================================
+// FUNCIÓN PARA SERVIR IMAGEN DESDE GOOGLE DRIVE
+// ===============================================================
+
+/**
+ * Obtiene una imagen de Google Drive y la convierte a formato Base64 para usarla en HTML.
+ * @returns {string} La imagen en formato Data URL (ej: 'data:image/png;base64,iVBORw0KGgo...') o null si hay error.
+ */
+function obtenerLogoBase64() {
+  try {
+    // IMPORTANTE: Pega aquí el ID de tu archivo de logo de Google Drive.
+    const ID_LOGO_DRIVE = '1PYf-nZI_LLOaHZsbYW5I8XSKOpCGBJu3'; 
+    
+    const archivo = DriveApp.getFileById(ID_LOGO_DRIVE);
+    const blob = archivo.getBlob();
+    const tipoContenido = blob.getContentType();
+    const base64Data = Utilities.base64Encode(blob.getBytes());
+    
+    // Devuelve la imagen en un formato que el <img> de HTML puede leer directamente.
+    return `data:${tipoContenido};base64,${base64Data}`;
+
+  } catch (e) {
+    console.error("Error al obtener el logo desde Drive: " + e.message);
+    return null; // Devuelve null si no se pudo cargar la imagen
+  }
 }
