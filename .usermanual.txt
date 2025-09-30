@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual de Usuario - Sistema de Gestión</title>
+    <style>
+        :root {
+            --primary-color: #2E86AB;
+            --secondary-color: #5DADE2;
+            --background-light: #F4F6F6;
+            --background-white: #FFFFFF;
+            --text-dark: #34495E;
+            --border-color: #D5DBDB;
+            --shadow-color: rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--background-light);
+            color: var(--text-dark);
+            margin: 0;
+            line-height: 1.6;
+        }
+
+        .container {
+            display: flex;
+            max-width: 1400px;
+            margin: 20px auto;
+            background-color: var(--background-white);
+            box-shadow: 0 4px 15px var(--shadow-color);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 280px;
+            background-color: var(--primary-color);
+            color: white;
+            padding: 25px;
+            flex-shrink: 0;
+        }
+
+        .sidebar h2 {
+            margin-top: 0;
+            text-align: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+            padding-bottom: 15px;
+        }
+
+        .sidebar ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        .sidebar li a {
+            display: block;
+            color: white;
+            text-decoration: none;
+            padding: 12px 15px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            transition: background-color 0.3s, transform 0.2s;
+        }
+
+        .sidebar li a:hover {
+            background-color: var(--secondary-color);
+            transform: translateX(5px);
+        }
+
+        .main-content {
+            flex-grow: 1;
+            padding: 40px;
+            overflow-y: auto;
+        }
+
+        header {
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+
+        header h1 {
+            color: var(--primary-color);
+            margin: 0;
+            font-size: 2.5rem;
+        }
+
+        section {
+            margin-bottom: 40px;
+            scroll-margin-top: 20px;
+        }
+
+        h2.section-title {
+            color: var(--primary-color);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            font-size: 1.8rem;
+        }
+
+        .card {
+            background-color: #FDFEFE;
+            border: 1px solid var(--border-color);
+            border-left: 5px solid var(--secondary-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .card h3 {
+            margin-top: 0;
+            color: var(--text-dark);
+        }
+        
+        ul.feature-list {
+            list-style-type: '✅ ';
+            padding-left: 20px;
+        }
+        ul.feature-list li {
+            padding-left: 10px;
+            margin-bottom: 8px;
+        }
+
+        /* Estilos para el acordeón interactivo */
+        .accordion details {
+            margin-bottom: 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+        }
+        .accordion summary {
+            padding: 15px;
+            cursor: pointer;
+            background-color: #EBF5FB;
+            font-weight: bold;
+            color: var(--primary-color);
+            outline: none;
+            transition: background-color 0.3s;
+        }
+        .accordion summary:hover {
+            background-color: #D6EAF8;
+        }
+        .accordion summary::marker {
+            color: var(--primary-color);
+        }
+        .accordion .details-content {
+            padding: 20px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        @media (max-width: 900px) {
+            .container {
+                flex-direction: column;
+                margin: 0;
+                border-radius: 0;
+            }
+            .sidebar {
+                width: 100%;
+                box-sizing: border-box;
+            }
+            .main-content {
+                padding: 25px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <aside class="sidebar">
+            <h2>Navegación</h2>
+            <ul>
+                <li><a href="#introduccion">Introducción</a></li>
+                <li><a href="#dashboard">Dashboard</a></li>
+                <li><a href="#gestion-diaria">Gestión Diaria</a></li>
+                <li><a href="#administracion">Administración</a></li>
+                <li><a href="#remuneraciones">Remuneraciones</a></li>
+                <li><a href="#sistema">Sistema</a></li>
+                <li><a href="#capacidades">Capacidades del Sistema</a></li>
+            </ul>
+        </aside>
+
+        <main class="main-content">
+            <header>
+                <h1>Manual de Usuario</h1>
+                <p>Guía completa del Sistema de Gestión de Nómina y Operaciones.</p>
+            </header>
+
+            <section id="introduccion">
+                <h2 class="section-title">Bienvenido al Sistema de Gestión</h2>
+                <div class="card">
+                    <p>
+                        Este sistema ha sido diseñado para centralizar y simplificar la gestión de colaboradores, el control de asistencia, el manejo de fondos, y el complejo proceso de cálculo de remuneraciones. Su objetivo es proporcionar una herramienta robusta, intuitiva y eficiente que permita a los administradores y asistentes llevar un control preciso de las operaciones diarias.
+                    </p>
+                    <p>
+                        Esta guía le proporcionará una visión detallada de cada módulo, explicando su propósito, funcionamiento y las acciones que puede realizar en cada uno.
+                    </p>
+                </div>
+            </section>
+
+            <section id="dashboard">
+                <h2 class="section-title">📊 Dashboard</h2>
+                <div class="card">
+                    <h3>Propósito</h3>
+                    <p>Ofrecer una vista rápida y consolidada del estado actual de la empresa. Es la primera pantalla que ve al iniciar sesión y sirve como un centro de mando para monitorear las métricas más importantes del día y del mes en curso.</p>
+                    <h3>Funcionamiento</h3>
+                    <ul class="feature-list">
+                        <li><strong>Tarjetas de Resumen:</strong> Muestran contadores clave en tiempo real: el número total de colaboradores activos, cuántos registros de asistencia se han hecho hoy y cuántas ausencias (licencias, faltas, etc.) se han reportado en el día.</li>
+                        <li><strong>Resumen de Ausencias Registradas:</strong> Una tabla dinámica que desglosa, para cada colaborador, el total de ausencias registradas durante el mes actual, clasificadas por tipo (Libre, Licencia Médica, Falta Justificada, Ausente).</li>
+                        <li><strong>Control de Días sin Registro:</strong> Una tabla crucial que muestra los días del mes (hasta el día de ayer) en los que un colaborador no tiene NINGÚN tipo de registro de asistencia. Esto ayuda a identificar omisiones en el registro y a asegurar que cada día esté justificado.</li>
+                    </ul>
+                </div>
+            </section>
+
+            <section id="gestion-diaria">
+                <h2 class="section-title">✅ Gestión Diaria</h2>
+                <div class="card">
+                    <h3>Registrar Asistencia</h3>
+                    <p>El corazón operativo del sistema. Permite registrar el estado diario de cada colaborador activo. La interfaz está diseñada para ser rápida y a prueba de errores, mostrando únicamente a los colaboradores pendientes de registro para la fecha seleccionada.</p>
+                </div>
+                <div class="card">
+                    <h3>Consultar Asistencia</h3>
+                    <p>Una poderosa herramienta de búsqueda que permite auditar y revisar el historial de asistencia. Se puede filtrar por un rango de fechas específico y/o por un colaborador en particular, facilitando la revisión de patrones o la búsqueda de un registro concreto. Los administradores tienen la capacidad de editar registros desde esta vista.</p>
+                </div>
+                <div class="card">
+                    <h3>Fondos de Caja</h3>
+                    <p>Este módulo permite un control financiero detallado de los movimientos de caja chica, anticipos y rendiciones. Cada transacción (entrada o salida) se asocia a un colaborador y un tipo de registro, creando un historial transparente. Una de sus funciones más destacadas es la generación automática de "Vales de Caja" en PDF para cada salida de dinero, los cuales pueden ser enviados por correo electrónico directamente desde la aplicación.</p>
+                </div>
+            </section>
+
+            <section id="administracion">
+                <h2 class="section-title">🏗️ Administración</h2>
+                <div class="card">
+                    <h3>Obras y Proyectos</h3>
+                    <p>Permite la gestión completa del ciclo de vida de los proyectos u obras de la empresa. Desde aquí puede crear nuevos proyectos, asignarles códigos, clientes y estados (Activo, Cerrado, Programado). También puede editar la información de proyectos existentes, duplicarlos para crear nuevas etapas o eliminarlos si es necesario.</p>
+                </div>
+                <div class="card">
+                    <h3>Registrar Colaboradores</h3>
+                    <p>Módulo dedicado al alta de nuevos miembros en el equipo. Se registra información esencial como su ID, nombre, cargo y sueldo base. Esta información es la base para todos los demás cálculos y registros en el sistema.</p>
+                </div>
+            </section>
+
+            <section id="remuneraciones">
+                <h2 class="section-title">💰 Remuneraciones</h2>
+                <div class="card">
+                    <h3>Otros Haberes</h3>
+                    <p>Un espacio flexible para registrar cualquier tipo de ingreso adicional para un colaborador que no sea parte de su sueldo base o de los bonos por proyecto. Ejemplos comunes incluyen bonos extraordinarios, comisiones o reembolsos de gastos.</p>
+                </div>
+                <div class="card">
+                    <h3>Días en Obras</h3>
+                    <p>Esta sección calcula una matriz fundamental para los bonos: cuenta cuántos días ha trabajado cada colaborador en cada proyecto específico dentro de un rango de fechas. El resultado se puede guardar en la hoja de cálculo "Bonificaciones", que sirve como base para el siguiente paso.</p>
+                </div>
+                <div class="card">
+                    <h3>Procesar Bonos por Obras</h3>
+                    <p>Aquí es donde la inteligencia del sistema brilla. Tomando los datos de "Días en Obras", esta herramienta permite asignar un monto total de bono a cada proyecto y distribuye ese monto entre los colaboradores de forma ponderada, basándose en los días trabajados y en un porcentaje de "peso" o importancia asignado a cada colaborador. Permite guardar los resultados finales en la hoja "Bonos a Pagar".</p>
+                </div>
+                 <div class="card">
+                    <h3>Reporte Total de Nómina</h3>
+                    <p>La culminación del proceso de remuneraciones. Esta herramienta genera un informe maestro que consolida toda la información del mes: sueldo base ajustado por días trabajados, descuentos (anticipos, etc.), bonos por proyecto y otros haberes. Calcula el líquido final a pagar para cada colaborador y permite exportar todo el informe a un archivo de Google Sheets limpio y profesional.</p>
+                </div>
+            </section>
+
+            <section id="sistema">
+                <h2 class="section-title">⚙️ Sistema</h2>
+                <div class="card">
+                    <h3>Configuración</h3>
+                    <p>Esta sección es para el mantenimiento del sistema. Desde aquí, un administrador puede ejecutar dos acciones críticas:</p>
+                    <ul class="feature-list">
+                        <li><strong>Inicializar Sistema:</strong> Verifica que todas las hojas de cálculo necesarias existan y tengan el formato correcto. Si falta alguna, la crea. Es útil para la configuración inicial o para reparar algún problema.</li>
+                        <li><strong>Crear Respaldo:</strong> Genera una copia de seguridad completa de la hoja de cálculo y todo el código asociado en una carpeta dedicada en Google Drive. Es una medida de seguridad fundamental.</li>
+                    </ul>
+                </div>
+            </section>
+
+            <section id="capacidades">
+                <h2 class="section-title">🚀 Listado de Capacidades del Sistema</h2>
+                <div class="accordion">
+                    <details>
+                        <summary>Gestión de Colaboradores y Proyectos</summary>
+                        <div class="details-content">
+                            <ul class="feature-list">
+                                <li>Registro de colaboradores con ID, nombre, cargo, sueldo base, etc.</li>
+                                <li>Gestión del estado del colaborador (Activo/Inactivo).</li>
+                                <li>Registro y administración completa de proyectos/obras.</li>
+                                <li>Manejo de estados de proyecto (Activo, Cerrado, Programado).</li>
+                                <li>Funcionalidad para editar, eliminar y duplicar proyectos fácilmente.</li>
+                            </ul>
+                        </div>
+                    </details>
+                    <details>
+                        <summary>Control de Asistencia y Operaciones</summary>
+                        <div class="details-content">
+                             <ul class="feature-list">
+                                <li>Registro de asistencia diario con estados personalizables.</li>
+                                <li>Asignación de colaboradores a proyectos, obras o turnos específicos.</li>
+                                <li>Consulta y auditoría del historial de asistencia con filtros avanzados.</li>
+                                <li>Edición de registros de asistencia (restringido a rol de Administrador).</li>
+                                <li>Dashboard con visión en tiempo real de la asistencia del día.</li>
+                            </ul>
+                        </div>
+                    </details>
+                    <details>
+                        <summary>Gestión Financiera y de Caja</summary>
+                        <div class="details-content">
+                            <ul class="feature-list">
+                                <li>Registro detallado de entradas y salidas de dinero de caja chica.</li>
+                                <li>Clasificación de movimientos por tipos (Anticipo, Rendición, Compra, etc.).</li>
+                                <li>Generación automática de "Vales de Caja" en formato Google Docs y PDF.</li>
+                                <li>Envío de vales por correo electrónico al colaborador y administrador.</li>
+                                <li>Cálculo de saldos pendientes por colaborador.</li>
+                                <li>Consulta de balance de caja con filtros y exportación a Google Sheets.</li>
+                            </ul>
+                        </div>
+                    </details>
+                     <details>
+                        <summary>Cálculo de Remuneraciones y Bonos</summary>
+                        <div class="details-content">
+                            <ul class="feature-list">
+                                <li>Cálculo automático de días trabajados en proyectos.</li>
+                                <li>Sistema de ponderación de bonos por importancia del colaborador.</li>
+                                <li>Distribución proporcional de montos de bonos por proyecto.</li>
+                                <li>Registro flexible de "Otros Haberes" y descuentos.</li>
+                                <li>Generación de un Informe Maestro de Nómina consolidado.</li>
+                                <li>Exportación del informe final a Google Sheets con formato profesional.</li>
+                            </ul>
+                        </div>
+                    </details>
+                     <details>
+                        <summary>Administración y Seguridad</summary>
+                        <div class="details-content">
+                            <ul class="feature-list">
+                                <li>Sistema de acceso basado en roles (Administrador y Asistente).</li>
+                                <li>Restricción de funcionalidades críticas solo para Administradores.</li>
+                                <li>Herramienta de inicialización para garantizar la integridad de la base de datos (Hojas de Cálculo).</li>
+                                <li>Funcionalidad de respaldo completo del sistema con un solo clic.</li>
+                                <li>Interfaz de usuario limpia, responsiva e intuitiva.</li>
+                            </ul>
+                        </div>
+                    </details>
+                </div>
+            </section>
+        </main>
+    </div>
+
+</body>
+</html>

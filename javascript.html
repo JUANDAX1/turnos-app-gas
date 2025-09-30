@@ -1344,6 +1344,15 @@ function openNominaPage(){
     alert("La URL de la aplicación aún no se ha cargado. Por favor, espere y vuelva a intentarlo.");
   }
 }
+
+function openHelpPage(){
+  if(webAppUrl){
+    window.open(webAppUrl + '?page=ayuda', '_blank');
+  } else {
+    alert("La URL de la aplicación aún no se ha cargado. Por favor, espere y vuelva a intentarlo.");
+  }
+}
+
 // ===============================================================
 // FUNCIÓN PARA RESPALDO DEL SISTEMA
 // ===============================================================

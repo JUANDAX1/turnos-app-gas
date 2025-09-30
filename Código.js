@@ -141,6 +141,13 @@ function doGet(e) {
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
       .setTitle("Informe Maestro de Nómina");
   }
+
+  if (e.parameter.page === 'ayuda') {
+    return HtmlService.createTemplateFromFile('ayuda.html')
+      .evaluate()
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+      .setTitle("Manual de Usuario");
+  } 
   
   // Sirve la página principal por defecto
   return HtmlService.createTemplateFromFile('index.html')
