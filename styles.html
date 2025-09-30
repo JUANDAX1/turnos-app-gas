@@ -257,3 +257,21 @@
   padding: 15px;
   text-align: center;
 }
+/* --- ESTILOS PARA GRUPOS DE NAVEGACIÓN --- */
+.nav-group-header {
+  padding: 20px 15px 8px 15px; /* Espacio alrededor del texto */
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5); /* Un color blanco semitransparente */
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-top: 1px solid rgba(255, 255, 255, 0.15); /* La línea separadora */
+  margin-top: 10px; /* Espacio antes de la línea */
+}
+
+/* Esto es para que el primer grupo no muestre una línea innecesaria arriba del todo */
+.nav-menu .nav-group-header:first-child {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 5px;
+}

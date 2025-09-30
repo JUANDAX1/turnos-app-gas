@@ -19,21 +19,25 @@
         <h1>Sistema de Nómina</h1>
       </div>
       <ul class="nav-menu">
+        <li class="nav-group-header">General</li>
         <li class="nav-item" id="nav-dashboard"><a class="nav-link" onclick="showTab('dashboard', this)"><span class="nav-icon">📊</span>Dashboard</a></li>
 
+        <li class="nav-group-header">Gestión Diaria</li>
         <li class="nav-item" id="nav-asistencia"><a class="nav-link" onclick="showTab('asistencia', this)"><span class="nav-icon">✅</span>Registrar Asistencia</a></li>
         <li class="nav-item" id="nav-consultas"><a class="nav-link" onclick="showTab('consultas', this)"><span class="nav-icon">🔍</span>Consultar Asistencia</a></li>
         <li class="nav-item" id="nav-fondoscaja"><a class="nav-link" onclick="showTab('fondoscaja', this)"><span class="nav-icon">💰</span>Fondos de Caja</a></li>
 
+        <li class="nav-group-header">Administración</li>
         <li class="nav-item" id="nav-proyectos"><a class="nav-link" onclick="showTab('proyectos', this)"><span class="nav-icon">🏗️</span>Obras y Proyectos</a></li>
         <li class="nav-item" id="nav-colaboradores"><a class="nav-link" onclick="showTab('colaboradores', this)"><span class="nav-icon">🧑‍💼</span>Registrar Colaboradores</a></li>
         
-        <li class="nav-item" id="nav-bonificaciones"><a class="nav-link" onclick="showTab('bonificaciones', this)"><span class="nav-icon">🎁</span>Dias en Obras</a></li>
-        <li class="nav-item"><a class="nav-link" href="#" onclick="openPonderarPage()"><span class="nav-icon">⚖️</span>Ponderar Bonos</a></li>
+        <li class="nav-group-header">Remuneraciones</li>
         <li class="nav-item" id="nav-otroshaberes"><a class="nav-link" onclick="showTab('otroshaberes', this)"><span class="nav-icon">💵</span>Otros Haberes</a></li>
+        <li class="nav-item" id="nav-bonificaciones"><a class="nav-link" onclick="showTab('bonificaciones', this)"><span class="nav-icon">🎁</span>Dias en Obras</a></li>
+        <li class="nav-item"><a class="nav-link" href="#" onclick="openPonderarPage()"><span class="nav-icon">⚖️</span>Procesar Bonos por Obras</a></li>
+        <li class="nav-item" id="nav-nomina"><a class="nav-link" onclick="openNominaPage()"><span class="nav-icon">💰</span>Reporte Total de nómina</a></li>
         
-        <li class="nav-item" id="nav-nomina"><a class="nav-link" onclick="openNominaPage()"><span class="nav-icon">💰</span>Calcular Nómina</a></li>
-
+        <li class="nav-group-header">Sistema</li>
         <li class="nav-item" id="nav-configuracion"><a class="nav-link" onclick="showTab('configuracion', this)"><span class="nav-icon">⚙️</span>Configuración</a></li>
         
       </ul>
