@@ -2647,3 +2647,93 @@ function crearRespaldoCompleto() {
     };
   }
 }
+// ===============================================================
+// FUNCIONES PARA EL DASHBOARD
+// ===============================================================
+
+/**
+ * Obtiene y procesa los datos para las tarjetas y tablas del dashboard.
+ * @returns {object} Un objeto con los datos para el resumen de ausencias y días sin registro.
+ */
+function obtenerDatosDashboard() {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    
+    // --- 1. Definir rangos de fechas ---
+    const hoy = new Date();
+    const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    const finMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
+    const ayer = new Date();
+    ayer.setDate(hoy.getDate() - 1);
+
+    // --- 2. Obtener datos crudos ---
+    const colaboradoresActivos = ss.getSheetByName(HOJA_COLABORADORES).getDataRange().getValues()
+      .slice(1).filter(row => row[6] === 'Activo').map(row => ({ id: row[0], nombre: row[1] }));
+
+    const registrosMes = ss.getSheetByName(HOJA_ASISTENCIA).getDataRange().getValues()
+      .slice(1).filter(row => {
+        const fechaReg = new Date(row[2]);
+        return fechaReg >= inicioMes && fechaReg <= finMes;
+      });
+
+    // --- 3. Procesar Resumen de Ausencias Registradas ---
+    const estadosAusencia = ['Libre', 'Licencia Médica', 'Falta Justificada', 'Ausente'];
+    const resumenAusencias = {};
+    colaboradoresActivos.forEach(col => {
+      resumenAusencias[col.id] = { nombre: col.nombre, Libre: 0, 'Licencia Médica': 0, 'Falta Justificada': 0, Ausente: 0 };
+    });
+
+    registrosMes.forEach(reg => {
+      const idCol = reg[1];
+      const estado = reg[3];
+      if (estadosAusencia.includes(estado) && resumenAusencias[idCol]) {
+        resumenAusencias[idCol][estado]++;
+      }
+    });
+
+    // --- 4. Procesar Días sin Registro ---
+    const mapaRegistros = new Map();
+    registrosMes.forEach(reg => {
+      const fechaKey = Utilities.formatDate(new Date(reg[2]), Session.getScriptTimeZone(), "yyyy-MM-dd");
+      const mapKey = `${reg[1]}_${fechaKey}`;
+      mapaRegistros.set(mapKey, true);
+    });
+
+    const diasSinRegistro = {};
+    const diasSemana = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    const fechasHeader = [];
+
+    for (let d = new Date(inicioMes); d <= ayer; d.setDate(d.getDate() + 1)) {
+      fechasHeader.push({
+        fecha: Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy-MM-dd"),
+        diaSemana: diasSemana[d.getDay()],
+        diaNum: d.getDate()
+      });
+    }
+
+    const datosSinRegistro = colaboradoresActivos.map(col => {
+        const faltas = {};
+        let totalFaltas = 0;
+        fechasHeader.forEach(f => {
+            const mapKey = `${col.id}_${f.fecha}`;
+            if (!mapaRegistros.has(mapKey)) {
+                faltas[f.fecha] = true;
+                totalFaltas++;
+            }
+        });
+        return { nombre: col.nombre, faltas: faltas, total: totalFaltas };
+    });
+
+    return {
+      resumen: Object.values(resumenAusencias),
+      sinRegistro: {
+        fechas: fechasHeader,
+        datos: datosSinRegistro
+      }
+    };
+
+  } catch (e) {
+    console.error("Error en obtenerDatosDashboard: " + e.message);
+    return { error: e.message };
+  }
+}

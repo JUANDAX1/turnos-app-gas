@@ -52,7 +52,24 @@
             <div class="stat-card"><div class="stat-value" id="stat-colaboradores">0</div><div class="stat-label">Colaboradores Activos</div></div>
             <div class="stat-card"><div class="stat-value" id="stat-asistencia-hoy">0</div><div class="stat-label">Asistencias Hoy</div></div>
             <div class="stat-card"><div class="stat-value" id="stat-ausencias-hoy">0</div><div class="stat-label">Ausencias Hoy</div></div>
-            <div class="stat-card"><div class="stat-value" id="stat-nomina-pendiente">0</div><div class="stat-label">Nóminas Pendientes</div></div>
+            
+          </div>
+          <div class="card">
+            <div class="card-header">Resumen de Ausencias Registradas (Mes Actual)</div>
+            <div class="card-body">
+              <div id="loading-dashboard-ausencias" class="loading">Calculando resumen...</div>
+              <div class="table-container" id="dashboard-ausencias-container">
+                </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">Días sin Registro de Asistencia (Mes Actual hasta ayer)</div>
+            <div class="card-body">
+              <div id="loading-dashboard-sin-registro" class="loading">Verificando días sin registro...</div>
+              <div class="table-container" id="dashboard-sin-registro-container">
+                </div>
+            </div>
           </div>
         </div>
       </div>

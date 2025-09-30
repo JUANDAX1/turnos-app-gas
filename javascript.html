@@ -123,12 +123,22 @@ function showTab(tabName, clickedLink) {
   document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
   document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
   document.getElementById(tabName).classList.add('active');
-  if(clickedLink) clickedLink.classList.add('active');
+  if (clickedLink) clickedLink.classList.add('active');
 
-  if (tabName === 'asistencia') {
+  if (tabName === 'dashboard') {
+    // Mostramos los spinners de carga
+    document.getElementById('loading-dashboard-ausencias').style.display = 'block';
+    document.getElementById('loading-dashboard-sin-registro').style.display = 'block';
+    // Llamamos a nuestra nueva función del backend
+    google.script.run
+      .withSuccessHandler(renderDashboardData)
+      .withFailureHandler(err => console.error('Error al cargar datos del dashboard', err))
+      .obtenerDatosDashboard();
+
+  } else if (tabName === 'asistencia') {
     cargarVistaAsistencia();
   } else if (tabName === 'consultas') {
-    cargarListasDesplegables(); 
+    cargarListasDesplegables();
   } else if (tabName === 'fondoscaja') {
     cargarListasFondosCaja();
     cargarResumenSaldos();
@@ -1386,4 +1396,89 @@ function obtenerLogoBase64() {
     console.error("Error al obtener el logo desde Drive: " + e.message);
     return null; // Devuelve null si no se pudo cargar la imagen
   }
+}
+/**
+ * Función principal que recibe los datos del dashboard y los distribuye a las funciones de renderizado.
+ */
+function renderDashboardData(data) {
+  // Ocultamos los spinners
+  document.getElementById('loading-dashboard-ausencias').style.display = 'none';
+  document.getElementById('loading-dashboard-sin-registro').style.display = 'none';
+
+  if (data.error) {
+    document.getElementById('dashboard-ausencias-container').innerHTML = `<div class="message error">Error: ${data.error}</div>`;
+    document.getElementById('dashboard-sin-registro-container').innerHTML = '';
+    return;
+  }
+  
+  // Llamamos a cada función para que "dibuje" su respectiva tabla
+  renderResumenAusencias(data.resumen);
+  renderDiasSinRegistro(data.sinRegistro);
+}
+
+/**
+ * Dibuja la tabla de resumen de ausencias registradas.
+ */
+function renderResumenAusencias(resumenData) {
+  const container = document.getElementById('dashboard-ausencias-container');
+  if (!resumenData || resumenData.length === 0) {
+    container.innerHTML = '<div class="message info">No se encontraron datos de ausencias para el mes actual.</div>';
+    return;
+  }
+
+  let table = `<table><thead><tr>
+                  <th>Colaborador</th>
+                  <th>Libre</th>
+                  <th>Licencia Médica</th>
+                  <th>Falta Justificada</th>
+                  <th>Ausente</th>
+                </tr></thead><tbody>`;
+
+  resumenData.forEach(item => {
+    table += `<tr>
+                <td>${item.nombre}</td>
+                <td style="text-align:center;">${item.Libre || 0}</td>
+                <td style="text-align:center;">${item['Licencia Médica'] || 0}</td>
+                <td style="text-align:center;">${item['Falta Justificada'] || 0}</td>
+                <td style="text-align:center;">${item.Ausente || 0}</td>
+              </tr>`;
+  });
+  
+  table += '</tbody></table>';
+  container.innerHTML = table;
+}
+
+/**
+ * Dibuja la tabla de días sin ningún tipo de registro.
+ */
+function renderDiasSinRegistro(sinRegistroData) {
+  const container = document.getElementById('dashboard-sin-registro-container');
+  if (!sinRegistroData || !sinRegistroData.datos || sinRegistroData.datos.length === 0) {
+    container.innerHTML = '<div class="message info">No hay colaboradores para analizar.</div>';
+    return;
+  }
+  
+  let table = '<table><thead><tr><th>Colaborador</th><th>Total Días</th>';
+  // Construir la cabecera con los días de la semana y el número del día
+  sinRegistroData.fechas.forEach(f => {
+    table += `<th style="text-align:center; min-width: 50px;">${f.diaSemana}<br><small>${f.diaNum}</small></th>`;
+  });
+  table += '</tr></thead><tbody>';
+
+  // Construir las filas para cada colaborador
+  sinRegistroData.datos.forEach(col => {
+    // Si un colaborador no tiene faltas, no lo mostramos para limpiar la vista
+    if (col.total === 0) return;
+
+    table += `<tr><td>${col.nombre}</td><td style="text-align:center; font-weight: bold;">${col.total}</td>`;
+    sinRegistroData.fechas.forEach(f => {
+      // Si la fecha existe en las faltas del colaborador, marcamos con 'X'
+      const marca = col.faltas[f.fecha] ? '<span style="color: red;">X</span>' : '';
+      table += `<td style="text-align:center;">${marca}</td>`;
+    });
+    table += '</tr>';
+  });
+
+  table += '</tbody></table>';
+  container.innerHTML = table;
 }
