@@ -16,18 +16,19 @@
         left: 0;
         width: 100%;
         height: 100%;
-        background: rgba(0, 0, 0, 0.5);
+        background: #FFFFFF;
         display: flex;
         justify-content: center;
         align-items: center;
         z-index: 1000;
-        backdrop-filter: blur(5px);
+
+        /* backdrop-filter: blur(5px); */
     }
     .login-card {
-        background: white;
+        background: transparent;
         padding: 40px;
         border-radius: 12px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        box-shadow: none;
         width: 100%;
         max-width: 380px;
         text-align: center;
@@ -256,4 +257,44 @@
   border-top: 1px solid var(--border-color);
   padding: 15px;
   text-align: center;
+}
+/* --- ESTILOS PARA GRUPOS DE NAVEGACIÓN --- */
+.nav-group-header {
+  padding: 20px 15px 8px 15px; /* Espacio alrededor del texto */
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5); /* Un color blanco semitransparente */
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-top: 1px solid rgba(255, 255, 255, 0.15); /* La línea separadora */
+  margin-top: 10px; /* Espacio antes de la línea */
+}
+
+/* Esto es para que el primer grupo no muestre una línea innecesaria arriba del todo */
+.nav-menu .nav-group-header:first-child {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 5px;
+}
+/* Estilo para el logo en la pantalla de carga */
+.splash-logo {
+  width: 25vw; /* Ajusta el tamaño de tu logo */
+  height: auto;
+  /* Animación sutil para que el logo "respire" mientras carga */
+  animation: fadeInPulse 2s ease-in-out infinite;
+}
+
+@keyframes fadeInPulse {
+  0% {
+    opacity: 0.8;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0.8;
+    transform: scale(0.98);
+  }
 }

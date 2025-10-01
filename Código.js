@@ -141,6 +141,13 @@ function doGet(e) {
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
       .setTitle("Informe Maestro de Nómina");
   }
+
+  if (e.parameter.page === 'ayuda') {
+    return HtmlService.createTemplateFromFile('ayuda.html')
+      .evaluate()
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+      .setTitle("Manual de Usuario");
+  } 
   
   // Sirve la página principal por defecto
   return HtmlService.createTemplateFromFile('index.html')
@@ -833,8 +840,12 @@ function consultarAsistencias(filtros) {
     }, {});
 
     const asistenciaData = sheetAsistencia.getDataRange().getValues().slice(1);
-    const fechaDesde = new Date(filtros.fechaDesde.replace(/-/g, '\/') + ' 00:00:00');
-    const fechaHasta = new Date(filtros.fechaHasta.replace(/-/g, '\/') + ' 23:59:59');
+    const fechaDesde = new Date(filtros.fechaDesde);
+    const fechaHasta = new Date(filtros.fechaHasta);
+
+    // Nos aseguramos de cubrir el día completo
+    fechaDesde.setHours(0, 0, 0, 0);
+    fechaHasta.setHours(23, 59, 59, 999);
 
     const resultados = asistenciaData.filter(fila => {
       const fechaRegistro = new Date(fila[2]);
@@ -1321,17 +1332,62 @@ function generarValeCaja(movimiento, colaborador) {
   const doc = DocumentApp.create(titulo);
   const body = doc.getBody();
 
+  // 1. Configura el ID de tu logo y la dirección de tu empresa
+  const ID_LOGO_DRIVE = '1PYf-nZI_LLOaHZsbYW5I8XSKOpCGBJu3';
+  const DIRECCION_EMPRESA = 'Ines de Suarez 1270 Osorno - Chile';
+
+  try {
+    // 2. Inserta el logo en el encabezado
+    const header = doc.addHeader();
+    // Limpiamos el encabezado para eliminar párrafos vacíos que puedan causar espacios extra
+    header.clear();
+
+    const logoBlob = DriveApp.getFileById(ID_LOGO_DRIVE).getBlob();
+    const logoImagen = header.appendImage(logoBlob);
+
+    // --- INICIO DE LA CORRECCIÓN ---
+    // Para evitar la deformación, calculamos la proporción original de la imagen
+    const originalWidth = logoImagen.getWidth();
+    const originalHeight = logoImagen.getHeight();
+    const aspectRatio = originalWidth / originalHeight;
+
+    // Definimos el nuevo ancho que deseamos (puedes ajustar este valor)
+    const nuevoAncho = 260; 
+    // Calculamos el nuevo alto manteniendo la proporción correcta
+    const nuevoAlto = nuevoAncho / aspectRatio;
+
+    // Aplicamos las dimensiones corregidas
+    logoImagen.setWidth(nuevoAncho);
+    logoImagen.setHeight(nuevoAlto);
+    // --- FIN DE LA CORRECCIÓN ---
+
+    // Finalmente, centramos la imagen
+    logoImagen.getParent().asParagraph().setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+
+  } catch (e) {
+    console.error("Error al cargar el logo desde Drive: " + e.message);
+    doc.getHeader().appendParagraph('Servipozos Osorno').setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+}
+
+// 3. Inserta la dirección en el pie de página
+const footer = doc.addFooter();
+body.appendParagraph('\n');
+footer.appendParagraph(DIRECCION_EMPRESA)
+      .setAlignment(DocumentApp.HorizontalAlignment.CENTER)
+      .setFontSize(10); // Se usa una letra pequeña para el pie de página
+
+
   // Encabezado general
   const estiloTitulo = {};
   body.appendParagraph('VALE DE CAJA').setHeading(DocumentApp.ParagraphHeading.HEADING1);
 
   const tabla = body.appendTable();
   let row = tabla.appendTableRow();
-  row.appendTableCell('Colaborador');
-  row.appendTableCell(nombre);
-  row = tabla.appendTableRow();
-  row.appendTableCell('ID Colaborador');
+  row.appendTableCell('RUT Colaborador');
   row.appendTableCell(idCol);
+  row = tabla.appendTableRow();
+  row.appendTableCell('Nombre Colaborador');
+  row.appendTableCell(nombre);
   row = tabla.appendTableRow();
   row.appendTableCell('Tipo de Registro');
   row.appendTableCell(movimiento.tipoRegistro || '');
@@ -1347,32 +1403,44 @@ function generarValeCaja(movimiento, colaborador) {
 
   body.appendParagraph('\nDECLARACIÓN:').setBold(true);
   body.appendParagraph('El dinero entregado debe ser rendido o justificado en el plazo establecido por la empresa. Si el dinero no es rendido en el tiempo establecido, éste podrá ser descontado de la remuneración del colaborador según la normativa interna.');
+  
+  body.appendParagraph('\nFirma del Colaborador: ____________________________');
+  body.appendParagraph('\nFirma y Timbre del Administrador: ____________________________');
 
   body.appendParagraph('\n').appendPageBreak();
 
+  
   // Segunda copia
-  body.appendParagraph('COPIA - Colaborador').setHeading(DocumentApp.ParagraphHeading.HEADING2);
+  body.appendParagraph('\n');
+  body.appendParagraph('VALE DE CAJA - copia').setHeading(DocumentApp.ParagraphHeading.HEADING2);
   const tabla2 = body.appendTable();
   row = tabla2.appendTableRow();
-  row.appendTableCell('Colaborador');
+  row.appendTableCell('Rut Colaborador');
+  row.appendTableCell(idCol);
+  row = tabla2.appendTableRow();
+  row.appendTableCell('Nombre Colaborador');
   row.appendTableCell(nombre);
   row = tabla2.appendTableRow();
-  row.appendTableCell('ID Colaborador');
-  row.appendTableCell(idCol);
+  row.appendTableCell('Fecha');
+  row.appendTableCell(fecha);
   row = tabla2.appendTableRow();
   row.appendTableCell('Monto entregado');
   row.appendTableCell(`$${Number(monto).toFixed(2)}`);
+  row = tabla2.appendTableRow();
+  row.appendTableCell('Detalle');
+  row.appendTableCell(detalle);
 
-  body.appendParagraph('\nFirma del Colaborador: ____________________________');
-  body.appendParagraph('\nFirma y Timbre del Administrador: ____________________________');
+  body.appendParagraph('\nDECLARACIÓN:').setBold(true);
+  body.appendParagraph('El dinero entregado debe ser rendido o justificado en el plazo establecido por la empresa. Si el dinero no es rendido en el tiempo establecido, éste podrá ser descontado de la remuneración del colaborador según la normativa interna.');
+
+  // body.appendParagraph('\nFirma del Colaborador: ____________________________');
+  // body.appendParagraph('\nFirma y Timbre del Administrador: ____________________________');
 
   doc.saveAndClose();
   const fileId = doc.getId();
   const url = doc.getUrl();
   return { fileId: fileId, url: url };
 }
-
-// AGREGA esta nueva función en 'Código.js'
 
 function enviarValePorCorreo(idRegistro) {
   try {
@@ -1929,6 +1997,94 @@ function guardarPonderacionFila(dataFila) {
 }
 
 /**
+ * Guarda un lote completo de ponderaciones de proyectos desde la interfaz.
+ * @param {object} datos - Objeto con la estructura { nombreProyecto: { colabId: peso, ... }, ... }.
+ * @returns {object} Un objeto con { success: true/false, message: '...' }.
+ */
+function guardarPesosPonderacionBatch(datos) {
+  try {
+    if (!datos || Object.keys(datos).length === 0) {
+      return { success: true, message: "No se enviaron datos nuevos para guardar." };
+    }
+
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    let sheet = ss.getSheetByName(HOJA_PONDERACION);
+    if (!sheet) {
+      sheet = ss.insertSheet(HOJA_PONDERACION);
+      sheet.getRange(1, 1).setValue("Proyecto").setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+    }
+
+    // --- Obtener estado actual de la hoja y mapeos ---
+    const sheetData = sheet.getDataRange().getValues();
+    const headers = sheetData.length > 0 ? [...sheetData[0]] : ["Proyecto"];
+    const mapaNombreAColumna = new Map(headers.map((h, i) => [h, i]));
+
+    const sheetColaboradores = ss.getSheetByName(HOJA_COLABORADORES);
+    const colaboradoresData = sheetColaboradores.getDataRange().getValues().slice(1);
+    const mapaIdANombre = new Map(colaboradoresData.map(row => [row[0].toString().trim(), row[1].toString().trim()]));
+
+    // --- Sincronizar Cabeceras (Añadir nuevas columnas si es necesario) ---
+    const todosColaboradoresIds = new Set();
+    Object.values(datos).forEach(ponderaciones => {
+      Object.keys(ponderaciones).forEach(id => todosColaboradoresIds.add(id));
+    });
+
+    let headerChanged = false;
+    todosColaboradoresIds.forEach(colabId => {
+      const nombreColab = mapaIdANombre.get(colabId);
+      if (nombreColab && !mapaNombreAColumna.has(nombreColab)) {
+        headers.push(nombreColab);
+        mapaNombreAColumna.set(nombreColab, headers.length - 1);
+        headerChanged = true;
+      }
+    });
+
+    if (headerChanged) {
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setBackground("#2E86AB").setFontColor("white").setFontWeight("bold");
+    }
+
+    // --- Actualizar los datos en una matriz en memoria ---
+    const mapaProyectoAFila = new Map(sheetData.slice(1).map((row, i) => [row[0], i])); 
+    const datosParaEscribir = sheetData.length > 1 ? sheetData.slice(1) : [];
+
+    for (const [nombreProyecto, ponderaciones] of Object.entries(datos)) {
+      let rowIndex = mapaProyectoAFila.get(nombreProyecto);
+      
+      if (rowIndex === undefined) {
+        // Si el proyecto es nuevo, lo preparamos para añadirlo al final
+        const nuevaFila = new Array(headers.length).fill('');
+        nuevaFila[0] = nombreProyecto;
+        datosParaEscribir.push(nuevaFila);
+        rowIndex = datosParaEscribir.length - 1;
+      }
+
+      for (const [colabId, peso] of Object.entries(ponderaciones)) {
+        const nombreColab = mapaIdANombre.get(colabId);
+        if (nombreColab) {
+          const colIndex = mapaNombreAColumna.get(nombreColab);
+          if (colIndex !== undefined) {
+            datosParaEscribir[rowIndex][colIndex] = peso;
+          }
+        }
+      }
+    }
+    
+    // --- Escribir toda la matriz actualizada de una sola vez ---
+    if (datosParaEscribir.length > 0) {
+      if (sheet.getLastRow() > 1) {
+          sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).clearContent();
+      }
+      sheet.getRange(2, 1, datosParaEscribir.length, headers.length).setValues(datosParaEscribir);
+    }
+
+    return { success: true, message: "Ponderaciones guardadas correctamente." };
+  } catch (e) {
+    console.error("Error en guardarPesosPonderacionBatch:", e);
+    return { success: false, message: `Error al guardar: ${e.message}` };
+  }
+}
+
+/**
  * Guarda los resultados del cálculo de bonos en una nueva hoja llamada 'Bonos a Pagar'.
  * @param {Array<Array<string>>} dataTabla - Un array 2D con los datos de la tabla de resultados.
  * @returns {object} Un objeto con { success: true/false, message: '...' }.
@@ -2444,5 +2600,166 @@ function exportarNominaMaestra(mes, anio) {
   } catch(e) {
     console.error("Error al exportar nómina:", e);
     return { success: false, message: `Error en el servidor: ${e.message}. Detalles: ${e.stack}` };
+  }
+}
+// ===============================================================
+// RESPALDO DE SEGURIDAD DEL SISTEMA
+// ===============================================================
+
+/**
+ * Crea una copia de seguridad completa del sistema, incluyendo la Hoja de Cálculo
+ * y su script vinculado, en una carpeta específica en Google Drive.
+ * @returns {object} Un objeto con un mensaje de éxito o error.
+ */
+function crearRespaldoCompleto() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const nombreOriginal = ss.getName();
+    
+    // 1. Definir la carpeta principal de respaldos
+    const carpetaPrincipalNombre = "RESPALDOS DE SEGURIDAD_SISTEMA NOMINA";
+    let carpetaPrincipal;
+    
+    const carpetas = DriveApp.getFoldersByName(carpetaPrincipalNombre);
+    if (carpetas.hasNext()) {
+      // Si la carpeta ya existe, la usamos
+      carpetaPrincipal = carpetas.next();
+    } else {
+      // Si no existe, la creamos en la raíz de Drive
+      carpetaPrincipal = DriveApp.createFolder(carpetaPrincipalNombre);
+    }
+
+    // 2. Crear una subcarpeta para este respaldo específico con fecha y hora
+    const ahora = new Date();
+    const timestamp = Utilities.formatDate(ahora, Session.getScriptTimeZone(), "yyyy-MM-dd_HH-mm-ss");
+    const carpetaRespaldo = carpetaPrincipal.createFolder(`Respaldo - ${timestamp}`);
+
+    // 3. Crear la copia del archivo de la Hoja de Cálculo
+    const archivoOriginal = DriveApp.getFileById(ss.getId());
+    const nuevoNombre = `${nombreOriginal} (Copia - ${timestamp})`;
+    
+    // Hacemos la copia dentro de la nueva carpeta de respaldo
+    archivoOriginal.makeCopy(nuevoNombre, carpetaRespaldo);
+
+    return {
+      success: true,
+      message: `¡Respaldo creado con éxito! Puede encontrarlo en Google Drive dentro de la carpeta: "${carpetaPrincipalNombre}/${carpetaRespaldo.getName()}"`
+    };
+
+  } catch (e) {
+    console.error("Error en crearRespaldoCompleto:", e);
+    return {
+      success: false,
+      message: `Ocurrió un error al crear el respaldo: ${e.message}`
+    };
+  }
+}
+// ===============================================================
+// FUNCIONES PARA EL DASHBOARD
+// ===============================================================
+
+/**
+ * Obtiene y procesa los datos para las tarjetas y tablas del dashboard.
+ * @returns {object} Un objeto con los datos para el resumen de ausencias y días sin registro.
+ */
+function obtenerDatosDashboard() {
+  try {
+    const ss = SpreadsheetApp.openById(getSpreadsheetId());
+    
+    // --- 1. Definir rangos de fechas ---
+    const hoy = new Date();
+    const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    const finMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
+    const ayer = new Date();
+    ayer.setDate(hoy.getDate() - 1);
+
+    // --- 2. Obtener datos crudos ---
+    const colaboradoresActivos = ss.getSheetByName(HOJA_COLABORADORES).getDataRange().getValues()
+      .slice(1).filter(row => row[6] === 'Activo').map(row => ({ id: row[0], nombre: row[1] }));
+
+    const registrosMes = ss.getSheetByName(HOJA_ASISTENCIA).getDataRange().getValues()
+      .slice(1).filter(row => {
+        const fechaReg = new Date(row[2]);
+        return fechaReg >= inicioMes && fechaReg <= finMes;
+      });
+
+      // --- 2.5. Procesar Estadísticas para las Tarjetas ---
+    const totalColaboradoresActivos = colaboradoresActivos.length;
+
+    const hoyKey = Utilities.formatDate(hoy, Session.getScriptTimeZone(), "yyyy-MM-dd");
+    const registrosHoy = registrosMes.filter(reg => {
+      const fechaRegKey = Utilities.formatDate(new Date(reg[2]), Session.getScriptTimeZone(), "yyyy-MM-dd");
+      return fechaRegKey === hoyKey;
+    });
+
+    const asistenciasHoy = registrosHoy.length;
+
+    const estadosAusenciaHoy = ['Libre', 'Licencia Médica', 'Falta Justificada', 'Ausente'];
+    const ausenciasHoy = registrosHoy.filter(reg => estadosAusenciaHoy.includes(reg[3])).length;
+
+    // --- 3. Procesar Resumen de Ausencias Registradas ---
+    const estadosAusencia = ['Libre', 'Licencia Médica', 'Falta Justificada', 'Ausente'];
+    const resumenAusencias = {};
+    colaboradoresActivos.forEach(col => {
+      resumenAusencias[col.id] = { nombre: col.nombre, Libre: 0, 'Licencia Médica': 0, 'Falta Justificada': 0, Ausente: 0 };
+    });
+
+    registrosMes.forEach(reg => {
+      const idCol = reg[1];
+      const estado = reg[3];
+      if (estadosAusencia.includes(estado) && resumenAusencias[idCol]) {
+        resumenAusencias[idCol][estado]++;
+      }
+    });
+
+    // --- 4. Procesar Días sin Registro ---
+    const mapaRegistros = new Map();
+    registrosMes.forEach(reg => {
+      const fechaKey = Utilities.formatDate(new Date(reg[2]), Session.getScriptTimeZone(), "yyyy-MM-dd");
+      const mapKey = `${reg[1]}_${fechaKey}`;
+      mapaRegistros.set(mapKey, true);
+    });
+
+    const diasSinRegistro = {};
+    const diasSemana = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    const fechasHeader = [];
+
+    for (let d = new Date(inicioMes); d <= ayer; d.setDate(d.getDate() + 1)) {
+      fechasHeader.push({
+        fecha: Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy-MM-dd"),
+        diaSemana: diasSemana[d.getDay()],
+        diaNum: d.getDate()
+      });
+    }
+
+    const datosSinRegistro = colaboradoresActivos.map(col => {
+        const faltas = {};
+        let totalFaltas = 0;
+        fechasHeader.forEach(f => {
+            const mapKey = `${col.id}_${f.fecha}`;
+            if (!mapaRegistros.has(mapKey)) {
+                faltas[f.fecha] = true;
+                totalFaltas++;
+            }
+        });
+        return { nombre: col.nombre, faltas: faltas, total: totalFaltas };
+    });
+
+    return {
+      stats: {
+        totalColaboradores: totalColaboradoresActivos,
+        asistenciasHoy: asistenciasHoy,
+        ausenciasHoy: ausenciasHoy
+      },
+      resumen: Object.values(resumenAusencias),
+      sinRegistro: {
+        fechas: fechasHeader,
+        datos: datosSinRegistro
+      }
+    };
+
+  } catch (e) {
+    console.error("Error en obtenerDatosDashboard: " + e.message);
+    return { error: e.message };
   }
 }

@@ -8,8 +8,9 @@
 
   <div class="login-overlay" id="loading-screen">
     <div class="login-card">
-      <h2>Sistema de Nómina</h2>
-      <p>Verificando acceso...</p>
+      <!-- <h2>Sistema de Nómina</h2>
+      <p>Verificando acceso...</p>  -->
+      <img src="https://github.com/JUANDAX1/assets-random/blob/main/servipozos_logo_png.png?raw=true" alt="Logo de la Empresa" class="splash-logo">
     </div>
   </div>
 
@@ -19,23 +20,27 @@
         <h1>Sistema de Nómina</h1>
       </div>
       <ul class="nav-menu">
+        <li class="nav-group-header">General</li>
         <li class="nav-item" id="nav-dashboard"><a class="nav-link" onclick="showTab('dashboard', this)"><span class="nav-icon">📊</span>Dashboard</a></li>
 
+        <li class="nav-group-header">Gestión Diaria</li>
         <li class="nav-item" id="nav-asistencia"><a class="nav-link" onclick="showTab('asistencia', this)"><span class="nav-icon">✅</span>Registrar Asistencia</a></li>
         <li class="nav-item" id="nav-consultas"><a class="nav-link" onclick="showTab('consultas', this)"><span class="nav-icon">🔍</span>Consultar Asistencia</a></li>
         <li class="nav-item" id="nav-fondoscaja"><a class="nav-link" onclick="showTab('fondoscaja', this)"><span class="nav-icon">💰</span>Fondos de Caja</a></li>
 
-        <li class="nav-item" id="nav-proyectos"><a class="nav-link" onclick="showTab('proyectos', this)"><span class="nav-icon">🏗️</span>Registrar Proyectos</a></li>
+        <li class="nav-group-header" id="header-administracion">Administración</li>
+        <li class="nav-item" id="nav-proyectos"><a class="nav-link" onclick="showTab('proyectos', this)"><span class="nav-icon">🏗️</span>Obras y Proyectos</a></li>
         <li class="nav-item" id="nav-colaboradores"><a class="nav-link" onclick="showTab('colaboradores', this)"><span class="nav-icon">🧑‍💼</span>Registrar Colaboradores</a></li>
         
-        <li class="nav-item" id="nav-bonificaciones"><a class="nav-link" onclick="showTab('bonificaciones', this)"><span class="nav-icon">🎁</span>Bonificaciones</a></li>
-        <li class="nav-item"><a class="nav-link" href="#" onclick="openPonderarPage()"><span class="nav-icon">⚖️</span>Ponderar Bonos</a></li>
+        <li class="nav-group-header" id="header-remuneraciones">Remuneraciones</li>
         <li class="nav-item" id="nav-otroshaberes"><a class="nav-link" onclick="showTab('otroshaberes', this)"><span class="nav-icon">💵</span>Otros Haberes</a></li>
+        <li class="nav-item" id="nav-bonificaciones"><a class="nav-link" onclick="showTab('bonificaciones', this)"><span class="nav-icon">🎁</span>Dias en Obras</a></li>
+        <li class="nav-item" id="nav-ponderar"><a class="nav-link" href="#" onclick="openPonderarPage()"><span class="nav-icon">⚖️</span>Procesar Bonos por Obras</a></li>
+        <li class="nav-item" id="nav-nomina"><a class="nav-link" onclick="openNominaPage()"><span class="nav-icon">💰</span>Reporte Total de nómina</a></li>
         
-        <li class="nav-item" id="nav-nomina"><a class="nav-link" onclick="openNominaPage()"><span class="nav-icon">💰</span>Calcular Nómina</a></li>
-
+        <li class="nav-group-header" id="header-sistema">Sistema</li>
         <li class="nav-item" id="nav-configuracion"><a class="nav-link" onclick="showTab('configuracion', this)"><span class="nav-icon">⚙️</span>Configuración</a></li>
-        
+        <li class="nav-item" id="nav-ayuda"><a class="nav-link" href="#" onclick="openHelpPage()"><span class="nav-icon">❓</span>Ayuda y Manual</a></li>
       </ul>
     </nav>
 
@@ -45,9 +50,26 @@
         <div class="content-body">
           <div class="stats-grid">
             <div class="stat-card"><div class="stat-value" id="stat-colaboradores">0</div><div class="stat-label">Colaboradores Activos</div></div>
-            <div class="stat-card"><div class="stat-value" id="stat-asistencia-hoy">0</div><div class="stat-label">Asistencias Hoy</div></div>
+            <div class="stat-card"><div class="stat-value" id="stat-asistencia-hoy">0</div><div class="stat-label">Marcaciones de Hoy</div></div>
             <div class="stat-card"><div class="stat-value" id="stat-ausencias-hoy">0</div><div class="stat-label">Ausencias Hoy</div></div>
-            <div class="stat-card"><div class="stat-value" id="stat-nomina-pendiente">0</div><div class="stat-label">Nóminas Pendientes</div></div>
+            
+          </div>
+          <div class="card">
+            <div class="card-header">Resumen de Ausencias Registradas (Mes Actual)</div>
+            <div class="card-body">
+              <div id="loading-dashboard-ausencias" class="loading">Calculando resumen...</div>
+              <div class="table-container" id="dashboard-ausencias-container">
+                </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">Días sin Registro de Asistencia (Mes Actual hasta ayer)</div>
+            <div class="card-body">
+              <div id="loading-dashboard-sin-registro" class="loading">Verificando días sin registro...</div>
+              <div class="table-container" id="dashboard-sin-registro-container">
+                </div>
+            </div>
           </div>
         </div>
       </div>
@@ -325,7 +347,8 @@
 
           <div class="card">
             <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-              <span>Resumen de Saldos</span>
+              <!-- <span>Resumen de Saldos</span> -->
+              <div class="card-header">Muestra los saldos pendientes por devolución de dinero, boletas o liquidación a fin de mes.</div>
               <button class="btn btn-sm btn-secondary" onclick="cargarResumenSaldos()">Actualizar Saldos</button>
             </div>
             <div class="card-body">
@@ -333,6 +356,7 @@
               <div class="table-container" id="tablaSaldos"></div>
               <div class="card">
                 <div class="card-header">Balance de Movimientos</div>
+                <div class="card-header">Movimientos detallados que facilitan el arqueo de caja.</div>
                 <div class="card-body">
                   <form id="formBalance" onsubmit="consultarBalance(event)" class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
                     <div class="form-group">
@@ -354,7 +378,7 @@
 
                   <div id="loadingBalance" class="loading"></div>
                   <div class="actions" style="margin-top: 20px; display: none;" id="balance-actions">
-                    <button class="btn btn-success" onclick="guardarBalance()">Guardar en Hoja</button>
+                    <!-- <button class="btn btn-success" onclick="guardarBalance()">Guardar en Hoja</button> --> 
                     <button class="btn" onclick="exportarBalance()">Exportar</button>
                   </div>
                   <div class="table-container" id="tablaBalanceContainer" style="margin-top: 15px;"></div>
@@ -368,7 +392,7 @@
       </div>
 
       <div id="bonificaciones" class="tab-content">
-        <div class="content-header"><h2>Bonificaciones por Proyecto</h2></div>
+        <div class="content-header"><h2>Bonificaciones por dia</h2></div>
         <div class="content-body">
           <div class="card">
             <div class="card-header">Filtros</div>
@@ -394,13 +418,14 @@
           </div>
 
           <div class="card">
-            <div class="card-header">Tabla de Bonificaciones</div>
+            <div class="card-header">Tabla de dias en Obras</div>
             <div class="card-body">
               <div id="loadingBonificaciones" class="loading">Cargando...</div>
-                <div class="actions" style="margin-bottom:12px;">
-                  <button class="btn" onclick="guardarBonificacionesHoja()">Guardar en Hoja</button>
-                </div>
                 <div class="table-container" id="tablaBonificaciones"></div>
+                <div class="actions" style="margin-bottom:12px;">
+                  <button class="btn" onclick="guardarBonificacionesHoja()">Guardar la selección de dias</button>
+                </div>
+                
             </div>
           </div>
         </div>
@@ -431,6 +456,7 @@
             <div class="card-body">
               <div class="actions">
                 <button class="btn btn-success" onclick="inicializarSistema()">Inicializar / Validar Hojas</button>
+                <button class="btn btn-primary" onclick="iniciarRespaldo()">Crear Respaldo del Sistema</button>
               </div>
               <div id="msgConfig"></div>
             </div>

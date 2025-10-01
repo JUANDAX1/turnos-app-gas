@@ -10,6 +10,42 @@ document.addEventListener("DOMContentLoaded", function() {
 
 function handleLogin(user) {
   const loadingScreen = document.getElementById('loading-screen');
+  const appContainer = document.getElementById('app-container');
+  const startTime = Date.now();
+  const MIN_DURATION = 1000 * 60; // 5 segundos
+
+  function showApp() {
+    const elapsedTime = Date.now() - startTime;
+    const remainingTime = MIN_DURATION - elapsedTime;
+
+    // Esperamos el tiempo que falte para cumplir los 5 segundos
+    setTimeout(() => {
+      // Aplicamos una transición suave para desaparecer
+      loadingScreen.style.transition = 'opacity 0.5s ease-out';
+      loadingScreen.style.opacity = '0';
+      
+      // Ocultamos completamente el div después de la transición
+      setTimeout(() => {
+         loadingScreen.style.display = 'none';
+      }, 500);
+
+      // Mostramos la aplicación principal
+      appContainer.style.visibility = 'visible';
+      setupUIForRole();
+      setDefaultDates();
+      cargarListasDesplegables();
+      
+      // Aseguramos que se muestre la primera pestaña
+      if (USER_ROLE === 'ADMINISTRADOR') {
+          showTab('dashboard', document.querySelector('#nav-dashboard a'));
+      } else if (USER_ROLE === 'ASISTENTE') {
+          showTab('asistencia', document.querySelector('#nav-asistencia a'));
+      }
+
+    }, Math.max(0, remainingTime)); // Se asegura de no esperar un tiempo negativo
+  }
+
+  // --- Lógica de acceso ---
   if (user && user.rol && user.rol !== 'SIN_ACCESO') {
     USER_ROLE = user.rol;
     webAppUrl = user.url; // <-- Asignamos la URL directamente desde el objeto 'user'
@@ -39,21 +75,35 @@ function handleLoginError(error) {
 }
 
 function setupUIForRole() {
-  const navColaboradores = document.getElementById('nav-colaboradores');
-  const navNomina = document.getElementById('nav-nomina');
-  const navConsultas = document.getElementById('nav-consultas');
-  const navConfig = document.getElementById('nav-configuracion');
-  const navDashboard = document.getElementById('nav-dashboard');
-  const navFondosCaja = document.getElementById('nav-fondoscaja');
-
   if (USER_ROLE === 'ASISTENTE') {
-    navColaboradores.style.display = 'none';
-    navNomina.style.display = 'none';
-    navConsultas.style.display = 'none';
-    navConfig.style.display = 'none';
-    navDashboard.style.display = 'none';
-    showTab('asistencia', document.querySelector('#nav-asistencia a'));
+    // 1. Lista de todos los elementos que debemos OCULTAR al Asistente
+    const itemsParaOcultar = [
+      'header-administracion',
+      'nav-proyectos',
+      'nav-colaboradores',
+      'header-remuneraciones',
+      'nav-otroshaberes',
+      'nav-bonificaciones',
+      'nav-ponderar', // ID que agregamos en el HTML
+      'nav-nomina',
+      'header-sistema',
+      'nav-configuracion'
+    ];
+
+    // 2. Recorremos la lista y ocultamos cada elemento
+    itemsParaOcultar.forEach(id => {
+      const elemento = document.getElementById(id);
+      if (elemento) {
+        elemento.style.display = 'none';
+      }
+    });
+
+    // 3. La primera pantalla que verá el Asistente será el Dashboard
+    showTab('dashboard', document.querySelector('#nav-dashboard a'));
+
   } else if (USER_ROLE === 'ADMINISTRADOR') {
+    // El Administrador ve todo, así que no ocultamos nada.
+    // Su primera pantalla también será el Dashboard.
     showTab('dashboard', document.querySelector('#nav-dashboard a'));
     mostrarColaboradores();
   }
@@ -73,10 +123,22 @@ function showTab(tabName, clickedLink) {
   document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
   document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
   document.getElementById(tabName).classList.add('active');
-  if(clickedLink) clickedLink.classList.add('active');
+  if (clickedLink) clickedLink.classList.add('active');
 
-  if (tabName === 'asistencia') {
+  if (tabName === 'dashboard') {
+    // Mostramos los spinners de carga
+    document.getElementById('loading-dashboard-ausencias').style.display = 'block';
+    document.getElementById('loading-dashboard-sin-registro').style.display = 'block';
+    // Llamamos a nuestra nueva función del backend
+    google.script.run
+      .withSuccessHandler(renderDashboardData)
+      .withFailureHandler(err => console.error('Error al cargar datos del dashboard', err))
+      .obtenerDatosDashboard();
+
+  } else if (tabName === 'asistencia') {
     cargarVistaAsistencia();
+  } else if (tabName === 'consultas') {
+    cargarListasDesplegables();
   } else if (tabName === 'fondoscaja') {
     cargarListasFondosCaja();
     cargarResumenSaldos();
@@ -1281,4 +1343,156 @@ function openNominaPage(){
   } else {
     alert("La URL de la aplicación aún no se ha cargado. Por favor, espere y vuelva a intentarlo.");
   }
+}
+
+function openHelpPage(){
+  if(webAppUrl){
+    window.open(webAppUrl + '?page=ayuda', '_blank');
+  } else {
+    alert("La URL de la aplicación aún no se ha cargado. Por favor, espere y vuelva a intentarlo.");
+  }
+}
+
+// ===============================================================
+// FUNCIÓN PARA RESPALDO DEL SISTEMA
+// ===============================================================
+
+function iniciarRespaldo() {
+  // Deshabilitamos el botón para evitar múltiples clics
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = 'Creando respaldo...';
+
+  showMessage('msgConfig', 'Iniciando proceso de respaldo. Esto puede tardar un momento...', 'info');
+
+  google.script.run
+    .withSuccessHandler(response => {
+      showMessage('msgConfig', response.message, response.success ? 'success' : 'error');
+      // Reactivamos el botón
+      btn.disabled = false;
+      btn.textContent = 'Crear Respaldo del Sistema';
+    })
+    .withFailureHandler(error => {
+      showMessage('msgConfig', `Error crítico al crear el respaldo: ${error.message}`, 'error');
+      // Reactivamos el botón
+      btn.disabled = false;
+      btn.textContent = 'Crear Respaldo del Sistema';
+    })
+    .crearRespaldoCompleto();
+}
+// ===============================================================
+// FUNCIÓN PARA SERVIR IMAGEN DESDE GOOGLE DRIVE
+// ===============================================================
+
+/**
+ * Obtiene una imagen de Google Drive y la convierte a formato Base64 para usarla en HTML.
+ * @returns {string} La imagen en formato Data URL (ej: 'data:image/png;base64,iVBORw0KGgo...') o null si hay error.
+ */
+function obtenerLogoBase64() {
+  try {
+    // IMPORTANTE: Pega aquí el ID de tu archivo de logo de Google Drive.
+    const ID_LOGO_DRIVE = '1PYf-nZI_LLOaHZsbYW5I8XSKOpCGBJu3'; 
+    
+    const archivo = DriveApp.getFileById(ID_LOGO_DRIVE);
+    const blob = archivo.getBlob();
+    const tipoContenido = blob.getContentType();
+    const base64Data = Utilities.base64Encode(blob.getBytes());
+    
+    // Devuelve la imagen en un formato que el <img> de HTML puede leer directamente.
+    return `data:${tipoContenido};base64,${base64Data}`;
+
+  } catch (e) {
+    console.error("Error al obtener el logo desde Drive: " + e.message);
+    return null; // Devuelve null si no se pudo cargar la imagen
+  }
+}
+/**
+ * Función principal que recibe los datos del dashboard y los distribuye a las funciones de renderizado.
+ */
+function renderDashboardData(data) {
+  // Ocultamos los spinners
+  if (data.stats) {
+  document.getElementById('stat-colaboradores').textContent = data.stats.totalColaboradores || 0;
+  document.getElementById('stat-asistencia-hoy').textContent = data.stats.asistenciasHoy || 0;
+  document.getElementById('stat-ausencias-hoy').textContent = data.stats.ausenciasHoy || 0;
+}
+  document.getElementById('loading-dashboard-ausencias').style.display = 'none';
+  document.getElementById('loading-dashboard-sin-registro').style.display = 'none';
+
+  if (data.error) {
+    document.getElementById('dashboard-ausencias-container').innerHTML = `<div class="message error">Error: ${data.error}</div>`;
+    document.getElementById('dashboard-sin-registro-container').innerHTML = '';
+    return;
+  }
+  
+  // Llamamos a cada función para que "dibuje" su respectiva tabla
+  renderResumenAusencias(data.resumen);
+  renderDiasSinRegistro(data.sinRegistro);
+}
+
+/**
+ * Dibuja la tabla de resumen de ausencias registradas.
+ */
+function renderResumenAusencias(resumenData) {
+  const container = document.getElementById('dashboard-ausencias-container');
+  if (!resumenData || resumenData.length === 0) {
+    container.innerHTML = '<div class="message info">No se encontraron datos de ausencias para el mes actual.</div>';
+    return;
+  }
+
+  let table = `<table><thead><tr>
+                  <th>Colaborador</th>
+                  <th>Libre</th>
+                  <th>Licencia Médica</th>
+                  <th>Falta Justificada</th>
+                  <th>Ausente</th>
+                </tr></thead><tbody>`;
+
+  resumenData.forEach(item => {
+    table += `<tr>
+                <td>${item.nombre}</td>
+                <td style="text-align:center;">${item.Libre || 0}</td>
+                <td style="text-align:center;">${item['Licencia Médica'] || 0}</td>
+                <td style="text-align:center;">${item['Falta Justificada'] || 0}</td>
+                <td style="text-align:center;">${item.Ausente || 0}</td>
+              </tr>`;
+  });
+  
+  table += '</tbody></table>';
+  container.innerHTML = table;
+}
+
+/**
+ * Dibuja la tabla de días sin ningún tipo de registro.
+ */
+function renderDiasSinRegistro(sinRegistroData) {
+  const container = document.getElementById('dashboard-sin-registro-container');
+  if (!sinRegistroData || !sinRegistroData.datos || sinRegistroData.datos.length === 0) {
+    container.innerHTML = '<div class="message info">No hay colaboradores para analizar.</div>';
+    return;
+  }
+  
+  let table = '<table><thead><tr><th>Colaborador</th><th>Total Días</th>';
+  // Construir la cabecera con los días de la semana y el número del día
+  sinRegistroData.fechas.forEach(f => {
+    table += `<th style="text-align:center; min-width: 50px;">${f.diaSemana}<br><small>${f.diaNum}</small></th>`;
+  });
+  table += '</tr></thead><tbody>';
+
+  // Construir las filas para cada colaborador
+  sinRegistroData.datos.forEach(col => {
+    // Si un colaborador no tiene faltas, no lo mostramos para limpiar la vista
+    if (col.total === 0) return;
+
+    table += `<tr><td>${col.nombre}</td><td style="text-align:center; font-weight: bold;">${col.total}</td>`;
+    sinRegistroData.fechas.forEach(f => {
+      // Si la fecha existe en las faltas del colaborador, marcamos con 'X'
+      const marca = col.faltas[f.fecha] ? '<span style="color: red;">X</span>' : '';
+      table += `<td style="text-align:center;">${marca}</td>`;
+    });
+    table += '</tr>';
+  });
+
+  table += '</tbody></table>';
+  container.innerHTML = table;
 }
